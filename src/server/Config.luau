@@ -27,6 +27,18 @@ Config.Programs = {
 	},
 }
 
+-- The arch stages in tunnel order, and what the screens call them.
+Config.StageOrder = { "Presoak", "HighPressure", "Foam", "Rinse", "ClearCoat", "HotWax", "SpotFree" }
+Config.StageNames = {
+	Presoak = "Presoak",
+	HighPressure = "High Pressure",
+	Foam = "Triple Foam",
+	Rinse = "Rinse",
+	ClearCoat = "Clear Coat",
+	HotWax = "Hot Wax",
+	SpotFree = "Spot-Free Rinse",
+}
+
 Config.Currency = "€"
 
 -- Player money (leaderstats.Cash).

@@ -36,7 +36,7 @@ Server (`src/server`), started by `init.server.luau` in this order:
 | `Welds` | Welds the moving machine parts (gate arms, brushes, blaster spinners, dryer fans) into rigid assemblies at startup. They're saved unanchored and unwelded. |
 | `Cash` | leaderstats `Cash`: start with 15, +10 every 120 s. `Cash.charge(player, price)` |
 | `WashLine` | The customer flow: kiosk payment → entry gate opens when the wash is free → car drives in → wash runs. Also sets the entrance `ProgressScreen` (Select / Good / Occupied). |
-| `Kiosk` | The pay terminal (`Selections`): menu, confirm, tap a "Debit Card" on the EFT reader |
+| `Kiosk` | The pay terminal (`Selections`): menu, confirm, tap a "Debit Card" on the EFT reader. Fills the screen's texts from `Config` and sets the payment `State` |
 | `Gates` | Entry (`GateEN`) and exit (`GateEX`) barrier arms |
 | `Wash` | The wash timeline (`Wash.run(program)`): pickup → tunnel → dryers → exit, phases and countdowns |
 | `Wash/Car` | Finding, measuring and towing the car; publishes `CarFront` / `CarLength` |
@@ -51,7 +51,7 @@ Client (`src/client`), one LocalScript each, all driven by attributes the server
 and by server time, so every player sees the same thing with no remotes:
 `LightShow` (ceiling lights and wall hexagons), `ArchLights` (arch LEDs),
 `TimerScreens` (Wash Time / Dry Time screens), `ProgressScreen` (entrance screen
-animations).
+animations), `KioskScreen` (pay terminal screen animations).
 
 ## Sync
 
@@ -140,7 +140,13 @@ and reconnect.
   switched with the fans. Particles on the moving brushes and blaster heads only
   animate properly in play mode, not in Studio's edit view.
 - `Lights` holds the 16 ceiling lights. `Building` holds the walls, roof and grading.
-- `Selections` is the pay terminal, `ProgressScreen` the status screen at the entrance,
+- `Selections` is the pay terminal. Its `Screen.SurfaceGui` (fixed 800 x 610 canvas) has a
+  `Header` with a Choose / Confirm / Pay stepper, a `Footer` hint line and three `Pages`:
+  `Select` (one card per program in `Cards`, each with an `Accent` colour attribute),
+  `Confirm` (summary and the `Confirm` / `Cancel` buttons) and `Process` (the step list and
+  payment status; its `State` attribute drives the client animations). The old screen is
+  kept in `ServerStorage.RemovedKioskScreen`.
+- `ProgressScreen` is the status screen at the entrance,
   `TimerWash` / `TimerWashScreen2` / `TimerDryer` the Wash Time and Dry Time screens.
 
 Names under `CarWash` must stay unique among siblings. Argon maps instances to files by

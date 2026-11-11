@@ -6,6 +6,8 @@
 -- part with Start / Loop / Stop sounds, and an LED that the clients animate
 -- (client/ArchLights) from the LightMode / LightSince attributes set here.
 
+local Config = require(script.Parent.Parent.Config)
+
 local New = workspace:WaitForChild("CarWash"):WaitForChild("New")
 
 export type Arch = {
@@ -25,15 +27,7 @@ Arches.ordered = {} :: { Arch }
 Arches.byKey = {} :: { [string]: Arch }
 
 -- What the Wash Time screen calls each stage.
-Arches.StageNames = {
-	Presoak = "Presoak",
-	HighPressure = "High Pressure",
-	Foam = "Triple Foam",
-	Rinse = "Rinse",
-	ClearCoat = "Clear Coat",
-	HotWax = "Hot Wax",
-	SpotFree = "Spot-Free Rinse",
-}
+Arches.StageNames = Config.StageNames
 
 local function emittersIn(root: Instance, name: string): { ParticleEmitter }
 	local list = {}
