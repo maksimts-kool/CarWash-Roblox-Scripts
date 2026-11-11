@@ -27,7 +27,14 @@ for _, child in CarWash:GetChildren() do
 	end
 end
 
-local CONVEYOR_SPEED = 2
+-- Conveyor speeds, studs per second.
+local CONVEYOR_SPEED = 2 -- into the dryers and out through the exit gate
+local TUNNEL_SPEED = 1.2 -- through the blasters, wrap-arounds and rockers
+-- Through the arches. Bigger washes crawl slower so every stage gets more time,
+-- the way the old gantry's bigger programs ran longer.
+local ARCH_SPEED = { Small = 0.9, Middle = 0.75, Full = 0.6 }
+local CONVEYOR_ACCEL = 1.5 -- how quickly the car eases between speeds
+local STALL_SECONDS = 12 -- give up on a move if the car makes no progress for this long
 local ARRIVAL_TIMEOUT = 45 -- how long a paid customer gets to reach the conveyor
 local DRY_SECONDS = 60
 local DEFAULT_CAR_LENGTH = 14
@@ -451,11 +458,15 @@ end
 
 -- Moves the car until its front reaches targetZ. Each trigger fires once, the
 -- moment the car reaches that point, and anything still unfired fires at the
--- end, in the order the triggers were listed.
-local function moveCarTo(targetZ, triggers)
-	setBelts(CONVEYOR_SPEED)
-	local deadline = os.clock() + math.max(carFront() - targetZ, 0) / CONVEYOR_SPEED + 15
+-- end, in the order the triggers were listed. cruiseSpeed() gives the speed for
+-- where the car is now (default CONVEYOR_SPEED); the car eases between speeds.
+local function moveCarTo(targetZ, triggers, cruiseSpeed)
+	cruiseSpeed = cruiseSpeed or function()
+		return CONVEYOR_SPEED
+	end
 	local pending = table.clone(triggers or {})
+	local speed = 0
+	local bestFront, lastProgress = carFront(), os.clock()
 
 	local function checkTriggers()
 		local index = 1
@@ -468,9 +479,15 @@ local function moveCarTo(targetZ, triggers)
 		end
 	end
 
-	while carFront() > targetZ and os.clock() < deadline do
+	while carFront() > targetZ and os.clock() - lastProgress < STALL_SECONDS do
 		local deltaTime = RunService.Heartbeat:Wait()
-		local speed = math.clamp((carFront() - targetZ) * 1.5, 0.4, CONVEYOR_SPEED)
+		-- slow to a stop on the target, otherwise cruise at this zone's speed
+		local goal = math.clamp((carFront() - targetZ) * 1.5, 0.4, cruiseSpeed())
+		speed += math.clamp(goal - speed, -CONVEYOR_ACCEL * deltaTime, CONVEYOR_ACCEL * deltaTime)
+		setBelts(speed)
+		if carFront() < bestFront - 0.05 then
+			bestFront, lastProgress = carFront(), os.clock()
+		end
 		if hasCar() then
 			setCarVelocity(speed)
 			car.virtualFront = carFront()
@@ -499,12 +516,36 @@ local function rearPasses(z)
 	end
 end
 
+-- Where the car runs at which speed: TUNNEL_SPEED until its nose reaches the
+-- first arch of the program, the program's arch speed until its tail clears the
+-- last one, then CONVEYOR_SPEED on to the dryers.
+local function zoneSpeed(zone)
+	if carFront() > zone.archStartZ then
+		return TUNNEL_SPEED
+	elseif carRear() > zone.archEndZ then
+		return zone.archSpeed
+	end
+	return CONVEYOR_SPEED
+end
+
+-- Seconds until the car's tail clears the last arch, at the zone speeds.
+local function washSecondsLeft(zone)
+	local rear = carRear()
+	local left = rear - zone.archEndZ
+	if left <= 0 then
+		return 0
+	end
+	-- the tail is here when the nose reaches the first arch
+	local beforeArches = math.clamp(rear - (zone.archStartZ + car.length), 0, left)
+	return beforeArches / TUNNEL_SPEED + (left - beforeArches) / zone.archSpeed
+end
+
 -- Wash Time shows how long until the car's tail clears the last arch it uses.
-local function startWashCountdown(washEndZ)
+local function startWashCountdown(zone)
 	local myRun = runId
 	task.spawn(function()
 		while myRun == runId do
-			local remaining = math.ceil((carRear() - washEndZ) / CONVEYOR_SPEED)
+			local remaining = math.ceil(washSecondsLeft(zone))
 			if remaining <= 0 then
 				break
 			end
@@ -520,7 +561,7 @@ end
 -- One continuous pull from the pickup point to the dryers: blasters, wrap-arounds,
 -- rockers, then every arch in the program, each switching on as the car's nose
 -- reaches it and off once the tail has passed.
-local function runTunnel(program)
+local function runTunnel(program, archSpeed)
 	local triggers = {
 		{ ready = rearPasses(BLASTER_END_Z), run = function() setBlasters(false) end },
 		{ ready = frontReaches(WRAP_Z + 5), run = function()
@@ -537,20 +578,24 @@ local function runTunnel(program)
 		{ ready = rearPasses(ROCKER_END_Z), run = function() setRockers(false) end },
 	}
 
-	local washEndZ = ROCKER_END_Z
+	local zone = { archStartZ = -math.huge, archEndZ = math.huge, archSpeed = archSpeed }
 	for _, arch in ArchOrder do
 		if program[arch.key] then
 			table.insert(triggers, { ready = frontReaches(arch.z + ARCH_LEAD), run = function() setArch(arch, true) end })
 			table.insert(triggers, { ready = rearPasses(arch.z - ARCH_TRAIL), run = function() setArch(arch, false) end })
-			washEndZ = math.min(washEndZ, arch.z - ARCH_TRAIL)
+			-- start slowing a little before the first arch so it's already crawling when it switches on
+			zone.archStartZ = math.max(zone.archStartZ, arch.z + ARCH_LEAD + 1.5)
+			zone.archEndZ = math.min(zone.archEndZ, arch.z - ARCH_TRAIL)
 		end
 	end
 	table.insert(triggers, { ready = frontReaches(DRYER_START_Z), run = startDryers })
 
-	startWashCountdown(washEndZ)
+	startWashCountdown(zone)
 	setBlasters(true)
 	setWraps(true)
-	moveCarTo(DRY_CENTER_Z - car.length / 2, triggers)
+	moveCarTo(DRY_CENTER_Z - car.length / 2, triggers, function()
+		return zoneSpeed(zone)
+	end)
 end
 
 local function runDryers()
@@ -581,7 +626,7 @@ function WashController:Run(washType, entryHit)
 
 	waitForCar()
 	grabCar()
-	runTunnel(program)
+	runTunnel(program, ARCH_SPEED[washType])
 	runDryers()
 	releaseCar()
 end
