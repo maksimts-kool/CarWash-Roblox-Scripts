@@ -95,7 +95,7 @@
           "Script": {
             "$className": "Script",
             "$properties": {
-              "Source": "local part = script.Parent.Part.SurfaceLight\n\nwhile wait(0.1) do\n\tif game.Lighting:GetMinutesAfterMidnight() > 6 * 60 then\n\t\tpart.Parent.Material = Enum.Material.SmoothPlastic\n\t\tpart.Enabled = false\n\tend\n\tif game.Lighting:GetMinutesAfterMidnight() > 18 * 60 then\n\t\tpart.Parent.Material = Enum.Material.Neon\n\t\tpart.Enabled = true\n\tend\nend"
+              "Source": "local part1 = script.Parent.Part1.SurfaceLight\nlocal part2 = script.Parent.Part2.SurfaceLight\n\nwhile wait(0.1) do\n\tif game.Lighting:GetMinutesAfterMidnight() > 6 * 60 then\n\t\tpart1.Parent.Material = Enum.Material.SmoothPlastic\n\t\tpart2.Parent.Material = Enum.Material.SmoothPlastic\n\t\tpart1.Enabled = false\n\t\tpart2.Enabled = false\n\tend\n\tif game.Lighting:GetMinutesAfterMidnight() > 18 * 60 then\n\t\tpart1.Parent.Material = Enum.Material.Neon\n\t\tpart2.Parent.Material = Enum.Material.Neon\n\t\tpart1.Enabled = true\n\t\tpart2.Enabled = true\n\tend\nend"
             }
           }
         },
@@ -104,7 +104,7 @@
           "Script": {
             "$className": "Script",
             "$properties": {
-              "Source": "while true do\n\tscript.Parent.Yellow.SurfaceGui.Enabled = true\n\tscript.Parent.Green.SurfaceGui.Enabled = false\n\twait(3)\n\tscript.Parent.Yellow.SurfaceGui.Enabled = false\n\tscript.Parent.Red.SurfaceGui.Enabled = true\n\twait(30)\n\tscript.Parent.Yellow.SurfaceGui.Enabled = true\n\twait(3)\n\tscript.Parent.Red.SurfaceGui.Enabled = false\n\tscript.Parent.Yellow.SurfaceGui.Enabled = false\n\tscript.Parent.Green.SurfaceGui.Enabled = true\n\twait(30)\nend"
+              "Source": "while true do\n\tscript.Parent.Yellow.SurfaceGui.Enabled = true\n\tscript.Parent.Green.SurfaceGui.Enabled = false\n\tscript.Parent.Filter.SurfaceGui.Enabled = false\n\twait(3)\n\tscript.Parent.Yellow.SurfaceGui.Enabled = false\n\tscript.Parent.Red.SurfaceGui.Enabled = true\n\twait(30)\n\tscript.Parent.Yellow.SurfaceGui.Enabled = true\n\twait(3)\n\tscript.Parent.Red.SurfaceGui.Enabled = false\n\tscript.Parent.Yellow.SurfaceGui.Enabled = false\n\tscript.Parent.Green.SurfaceGui.Enabled = true\n\tscript.Parent.Filter.SurfaceGui.Enabled = true\n\twait(30)\nend"
             }
           }
         },
@@ -968,7 +968,7 @@
               "Script": {
                 "$className": "Script",
                 "$properties": {
-                  "Source": "function act()\n\tif script.Parent.Parent.Parent.Parent.WashType.Value == \"Ultimate\" or script.Parent.Parent.Parent.Parent.WashType.Value == \"Premium\" then\nscript.Parent.Parent.Sensor.Script.Disabled = true\nscript.Parent.Parent.BrushOne.BrushPart.Nozzle.ParticleEmitter.Enabled = true\nscript.Parent.Parent.BrushTwo.BrushPart.Nozzle.ParticleEmitter.Enabled = true\nscript.Parent.Parent.BrushTwo.BrushMotor.motor.BodyAngularVelocity.AngularVelocity = Vector3.new(0,-10,0)\nscript.Parent.Parent.BrushOne.BrushMotor.motor.BodyAngularVelocity.AngularVelocity = Vector3.new(0,10,0)\nscript.Parent.Parent.Air:Play()\nwait(1)\nscript.Parent.Parent.BrushTwo.BrushPart.Motor.BodyAngularVelocity.AngularVelocity = Vector3.new(0,0.3,0)\nscript.Parent.Parent.BrushOne.BrushPart.Motor.BodyAngularVelocity.AngularVelocity = Vector3.new(0,-0.3,0)\nwait(2)\nscript.Parent.Parent.Brush:Play()\nwait(5)\nscript.Parent.Parent.Air:Play()\nscript.Parent.Parent.BrushOne.Blocks.BrushBlocker3.CanCollide = true\nscript.Parent.Parent.BrushOne.BrushPart.Motor.BodyAngularVelocity.AngularVelocity = Vector3.new(0,0.2,0)\nwait(4.5)\nscript.Parent.Parent.Air2:Play()\nscript.Parent.Parent.BrushTwo.Blocks.BrushBlocker3.CanCollide = true\nscript.Parent.Parent.BrushTwo.BrushPart.Motor.BodyAngularVelocity.AngularVelocity = Vector3.new(0,-0.2,0)\nwait(9)\n\t\tscript.Parent.Parent.Sensor2.Script.Disabled = false\n\t\tend\nend\nscript.Parent.Touched:connect(act) "
+                  "Source": "function act()\nscript.Parent.Parent.Sensor.Script.Disabled = true\nscript.Parent.Parent.BrushOne.BrushPart.Nozzle.ParticleEmitter.Enabled = true\nscript.Parent.Parent.BrushTwo.BrushPart.Nozzle.ParticleEmitter.Enabled = true\nscript.Parent.Parent.BrushTwo.BrushMotor.motor.BodyAngularVelocity.AngularVelocity = Vector3.new(0,-10,0)\nscript.Parent.Parent.BrushOne.BrushMotor.motor.BodyAngularVelocity.AngularVelocity = Vector3.new(0,10,0)\nscript.Parent.Parent.Air:Play()\nwait(1)\nscript.Parent.Parent.BrushTwo.BrushPart.Motor.BodyAngularVelocity.AngularVelocity = Vector3.new(0,0.3,0)\nscript.Parent.Parent.BrushOne.BrushPart.Motor.BodyAngularVelocity.AngularVelocity = Vector3.new(0,-0.3,0)\nwait(2)\nscript.Parent.Parent.Brush:Play()\nwait(5)\nscript.Parent.Parent.Air:Play()\nscript.Parent.Parent.BrushOne.Blocks.BrushBlocker3.CanCollide = true\nscript.Parent.Parent.BrushOne.BrushPart.Motor.BodyAngularVelocity.AngularVelocity = Vector3.new(0,0.2,0)\nwait(4.5)\nscript.Parent.Parent.Air2:Play()\nscript.Parent.Parent.BrushTwo.Blocks.BrushBlocker3.CanCollide = true\nscript.Parent.Parent.BrushTwo.BrushPart.Motor.BodyAngularVelocity.AngularVelocity = Vector3.new(0,-0.2,0)\nwait(9)\nscript.Parent.Parent.Sensor2.Script.Disabled = false\nend\nscript.Parent.Touched:connect(act) "
                 }
               }
             },
@@ -978,7 +978,7 @@
                 "$className": "Script",
                 "$properties": {
                   "Disabled": true,
-                  "Source": "function act()\n\tif script.Parent.Parent.Parent.Parent.WashType.Value == \"Ultimate\" or script.Parent.Parent.Parent.Parent.WashType.Value == \"Premium\" then\nscript.Parent.Parent.Sensor2.Script.Disabled = true\nscript.Parent.Parent.BrushOne.Blocks.BrushBlocker3.CanCollide = false\nscript.Parent.Parent.BrushOne.BrushPart.Motor.BodyAngularVelocity.AngularVelocity = Vector3.new(0,-0.350,0)\nwait(3)\nscript.Parent.Parent.BrushTwo.Blocks.BrushBlocker3.CanCollide = false\nscript.Parent.Parent.BrushTwo.BrushPart.Motor.BodyAngularVelocity.AngularVelocity = Vector3.new(0,0.350,0)\nwait(5)\nscript.Parent.Parent.Brush:Stop()\nscript.Parent.Parent.Air:Play()\nwait(0.4)\nscript.Parent.Parent.BrushOne.BrushPart.Nozzle.ParticleEmitter.Enabled = false\nscript.Parent.Parent.BrushTwo.BrushPart.Nozzle.ParticleEmitter.Enabled = false\nscript.Parent.Parent.BrushOne.BrushMotor.motor.BodyAngularVelocity.AngularVelocity = Vector3.new(0,0,0)\nscript.Parent.Parent.BrushTwo.BrushMotor.motor.BodyAngularVelocity.AngularVelocity = Vector3.new(0,0,0)\nscript.Parent.Parent.BrushTwo.BrushPart.Motor.BodyAngularVelocity.AngularVelocity = Vector3.new(0,-0.5,0)\nscript.Parent.Parent.BrushOne.BrushPart.Motor.BodyAngularVelocity.AngularVelocity = Vector3.new(0,0.5,0)\n\t\tscript.Parent.Parent.Sensor.Script.Disabled = false\n\t\tend\nend\nscript.Parent.Touched:connect(act) "
+                  "Source": "function act()\nscript.Parent.Parent.Sensor2.Script.Disabled = true\nscript.Parent.Parent.BrushOne.Blocks.BrushBlocker3.CanCollide = false\nscript.Parent.Parent.BrushOne.BrushPart.Motor.BodyAngularVelocity.AngularVelocity = Vector3.new(0,-0.350,0)\nwait(3)\nscript.Parent.Parent.BrushTwo.Blocks.BrushBlocker3.CanCollide = false\nscript.Parent.Parent.BrushTwo.BrushPart.Motor.BodyAngularVelocity.AngularVelocity = Vector3.new(0,0.350,0)\nwait(5)\nscript.Parent.Parent.Brush:Stop()\nscript.Parent.Parent.Air:Play()\nwait(0.4)\nscript.Parent.Parent.BrushOne.BrushPart.Nozzle.ParticleEmitter.Enabled = false\nscript.Parent.Parent.BrushTwo.BrushPart.Nozzle.ParticleEmitter.Enabled = false\nscript.Parent.Parent.BrushOne.BrushMotor.motor.BodyAngularVelocity.AngularVelocity = Vector3.new(0,0,0)\nscript.Parent.Parent.BrushTwo.BrushMotor.motor.BodyAngularVelocity.AngularVelocity = Vector3.new(0,0,0)\nscript.Parent.Parent.BrushTwo.BrushPart.Motor.BodyAngularVelocity.AngularVelocity = Vector3.new(0,-0.5,0)\nscript.Parent.Parent.BrushOne.BrushPart.Motor.BodyAngularVelocity.AngularVelocity = Vector3.new(0,0.5,0)\n\tscript.Parent.Parent.Sensor.Script.Disabled = false\nend\nscript.Parent.Touched:connect(act) "
                 }
               }
             }
@@ -998,7 +998,7 @@
             "Script": {
               "$className": "Script",
               "$properties": {
-                "Source": "local event = script.Parent.Parent.Ultimate.Control\n\nevent.Event:Connect(function(who,val)\n\tif who == \"Gate\" then\n\t\tif val then\n\t\t\tscript.Parent.Ramp.HingeConstraint.TargetAngle = -90\n\t\telse\n\t\t\tscript.Parent.Ramp.HingeConstraint.TargetAngle = 0\n\t\tend\n\tend\nend)"
+                "Source": "local event = script.Parent.Parent.Ultimate.Control\n\nevent.Event:Connect(function(who,val)\n\tif who == \"Gate2\" then\n\t\tif val then\n\t\t\tscript.Parent.Ramp.HingeConstraint.TargetAngle = -90\n\t\telse\n\t\t\tscript.Parent.Ramp.HingeConstraint.TargetAngle = 0\n\t\tend\n\tend\nend)"
               }
             }
           },
