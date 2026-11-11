@@ -10,6 +10,10 @@
 --   StageEndsAt / StageTotal  timing of the current step; the progress bar
 --              fills for that step only (without them it follows the whole countdown)
 --   Program    the wash the customer paid for, shown in the footer
+--
+-- Every CarWash child named TimerWash... (TimerWash, TimerWashScreen2, ...) is a
+-- Wash Time screen and every TimerDryer... a Dry Time screen. Copies show the
+-- same data as the original, wherever their SurfaceGui sits inside the model.
 
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
@@ -88,8 +92,8 @@ end
 local Screen = {}
 Screen.__index = Screen
 
-function Screen.new(model, kind)
-	local gui = waitPath(model, "Screen", "Screen", "SurfaceGui")
+-- source: the model WashController puts the attributes on; gui: the screen's SurfaceGui.
+function Screen.new(source, kind, gui)
 	local body = gui:WaitForChild("Body")
 	local dial = body:WaitForChild("Dial")
 	local disc = dial:WaitForChild("Disc")
@@ -97,7 +101,7 @@ function Screen.new(model, kind)
 	local backdrop = body:WaitForChild("Backdrop")
 
 	local self = setmetatable({
-		model = model,
+		model = source,
 		kind = kind,
 		gui = gui,
 		brightness = gui.Brightness,
@@ -486,10 +490,42 @@ function Screen:update(now)
 	end
 end
 
-local screens = {
-	Screen.new(CarWash:WaitForChild("TimerWash"), "Wash"),
-	Screen.new(CarWash:WaitForChild("TimerDryer"), "Dry"),
+local SOURCES = {
+	Wash = CarWash:WaitForChild("TimerWash"),
+	Dry = CarWash:WaitForChild("TimerDryer"),
 }
+
+local function kindOf(name)
+	if name:match("^TimerWash") then
+		return "Wash"
+	elseif name:match("^TimerDryer") then
+		return "Dry"
+	end
+	return nil
+end
+
+local screens = {}
+
+-- Waits for the model's SurfaceGui to have the timer UI, then starts drawing it.
+local function addScreen(model)
+	local kind = kindOf(model.Name)
+	if not kind then
+		return
+	end
+	task.spawn(function()
+		local gui = model:FindFirstChildWhichIsA("SurfaceGui", true)
+		while not (gui and gui:FindFirstChild("Body")) do
+			model.DescendantAdded:Wait()
+			gui = model:FindFirstChildWhichIsA("SurfaceGui", true)
+		end
+		table.insert(screens, Screen.new(SOURCES[kind], kind, gui))
+	end)
+end
+
+for _, child in CarWash:GetChildren() do
+	addScreen(child)
+end
+CarWash.ChildAdded:Connect(addScreen)
 
 RunService.RenderStepped:Connect(function()
 	local now = workspace:GetServerTimeNow()
