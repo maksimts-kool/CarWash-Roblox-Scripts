@@ -155,6 +155,7 @@ function MainScreenModule:ProceedCheck()
 		wait(0.1)
 	end
 	root.GateEN.Frame.MotorSupport.HingeConstraint.TargetAngle = -80
+	MainModule:Ready()
 	wait(2)
 	MainModule.values.MAIN_SCREEN_DONE = true
 	MainModule.values.WASH = washTypeConf

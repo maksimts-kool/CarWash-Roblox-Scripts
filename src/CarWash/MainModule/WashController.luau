@@ -174,6 +174,21 @@ local car = {}
 local runId = 0
 local dryersRunning = false
 
+-- CarWash.LightShow animates the ceiling lights and wall hexagons on the
+-- clients from these attributes: the wash phase and where the car is.
+local CAR_PUBLISH_SECONDS = 0.1
+local lastCarPublish = 0
+
+local function setPhase(phase)
+	CarWash:SetAttribute("WashPhase", phase)
+	CarWash:SetAttribute("WashPhaseSince", workspace:GetServerTimeNow())
+end
+
+local function clearCarPosition()
+	CarWash:SetAttribute("CarFront", nil)
+	CarWash:SetAttribute("CarLength", nil)
+end
+
 local function sleepUntil(moment)
 	local remaining = moment - os.clock()
 	if remaining > 0 then
@@ -354,6 +369,15 @@ local function carRear()
 	return carFront() + car.length
 end
 
+local function publishCarPosition(force)
+	if not force and os.clock() - lastCarPublish < CAR_PUBLISH_SECONDS then
+		return
+	end
+	lastCarPublish = os.clock()
+	CarWash:SetAttribute("CarFront", carFront())
+	CarWash:SetAttribute("CarLength", car.length)
+end
+
 local function worldHalfSize(part, axis)
 	local half = part.Size / 2
 	local cf = part.CFrame
@@ -403,6 +427,9 @@ local function waitForCar()
 	end)
 	local deadline = os.clock() + ARRIVAL_TIMEOUT
 	while os.clock() < deadline and not (hasCar() and carFront() <= PICKUP_Z) do
+		if hasCar() then
+			publishCarPosition()
+		end
 		task.wait(0.05)
 	end
 	connection:Disconnect()
@@ -509,10 +536,12 @@ local function moveCarTo(targetZ, triggers, cruiseSpeed)
 		else
 			car.virtualFront -= speed * deltaTime
 		end
+		publishCarPosition()
 		checkTriggers()
 	end
 
 	setCarVelocity(0)
+	publishCarPosition(true)
 	setBelts(0)
 	while #pending > 0 do
 		table.remove(pending, 1).run()
@@ -641,9 +670,20 @@ function WashController:Run(washType, entryHit)
 
 	waitForCar()
 	grabCar()
+	publishCarPosition(true)
+	setPhase("Washing")
 	runTunnel(program, ARCH_SPEED[washType])
+	setPhase("Drying")
 	runDryers()
+	setPhase("Exit")
 	releaseCar()
+	setPhase("Finished")
+	clearCarPosition()
+end
+
+-- The paid customer's gate is open: the tunnel lights power up for them.
+function WashController:Ready()
+	setPhase("Ready")
 end
 
 -- Puts every machine back to idle.
@@ -670,6 +710,7 @@ function WashController:Reset()
 		setDryerAir(dryer, false)
 	end
 	releaseTow()
+	clearCarPosition()
 	WashDisplay.Value = "---"
 	DryDisplay.Value = "--"
 end
@@ -678,10 +719,12 @@ end
 function WashController:Abort()
 	self:Reset()
 	ExitGate.TargetAngle = -80
+	setPhase("Finished")
 end
 
 function WashController:Initialize()
 	self:Reset()
+	setPhase("Idle")
 end
 
 return WashController

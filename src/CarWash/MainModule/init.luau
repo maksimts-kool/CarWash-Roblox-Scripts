@@ -27,6 +27,10 @@ function MainModule:StartWash(entryHit)
 	end)
 end
 
+function MainModule:Ready()
+	WashController:Ready()
+end
+
 function MainModule:FinishWash()
 	print("Finished wash process for ".. self.values.WASH)
 	self.values.OCCUPIED = false
