@@ -15,8 +15,9 @@
 --      others keep their name;
 --   4. every FanMotor gets a Motor6D "Joint" spinning it about its right face,
 --      on a hidden anchored pivot, and its surface motor is removed;
---   5. every other constraint and body mover is removed, and anything left
---      loose is anchored where it is.
+--   5. every other constraint and body mover is removed (visible ropes, rods
+--      and springs stay, as scenery), and anything left loose is anchored
+--      where it is.
 --
 -- The moving parts all hang off anchored parts through these joints, so they
 -- are anchored assemblies: no physics, no network ownership, nothing to fling
@@ -272,9 +273,10 @@ local function convertFans()
 		if not unit.Name:match("^KWS Storm Dryer") then
 			continue
 		end
-		-- the legacy Motor joints the surface motors made
+		-- the legacy joints the surface motors made (RotateV for a Motor surface);
+		-- removed here so convertRotates doesn't give each fan a second joint
 		for _, item in unit:GetDescendants() do
-			if item.ClassName == "Motor" then
+			if item.ClassName == "Motor" or ROTATE_CLASSES[item.ClassName] then
 				item:Destroy()
 			end
 		end
@@ -307,9 +309,18 @@ local function convertFans()
 	end
 end
 
--- Constraints that aren't welds, and the old BodyMovers.
+-- Visible ropes, rods and springs are scenery (the building's cables, the
+-- clearance bar's rods): they're kept, and once their parts are anchored they
+-- just draw a line between them.
+local function isScenery(item: Instance): boolean
+	return (item:IsA("RopeConstraint") or item:IsA("RodConstraint") or item:IsA("SpringConstraint"))
+		and (item :: Constraint).Visible
+end
+
+-- Constraints that aren't welds or scenery, and the old BodyMovers.
 local function isPhysics(item: Instance): boolean
-	return (item:IsA("Constraint") and not item:IsA("RigidConstraint")) or item:IsA("BodyMover")
+	return (item:IsA("Constraint") and not item:IsA("RigidConstraint") and not isScenery(item))
+		or item:IsA("BodyMover")
 end
 
 -- Leaves alone anything that's meant to be physical: tools, and vehicles (or
@@ -350,9 +361,9 @@ function Joints.setup()
 	end
 
 	Welds.weldAll()
+	convertFans() -- before convertRotates: the fans' surface motors are RotateV joints too
 	convertRotates(skip)
 	convertHinges(skip)
-	convertFans()
 
 	-- Whatever the removed constraints were holding up stays where it is.
 	local anchored = 0
