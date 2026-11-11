@@ -33,8 +33,8 @@ Server (`src/server`), started by `init.server.luau` in this order:
 | Module | Does |
 |---|---|
 | `Config` | Every tunable number: wash programs (name, price, arch speed, which arches), conveyor speeds, timings, cash, gate angles |
-| `Joints` | Runs first. Replaces the machines' physics with scripted joints: welds each moving part into a rigid assembly (`Welds`), turns every `HingeConstraint` into a `Motor6D` (named `Joint`, or the hinge's own name like the blasters' `Move`), gives each dryer `FanMotor` a `Joint` instead of its surface motor, removes every other constraint / body mover and anchors anything left loose. Moving parts stop colliding, except the gate arms. `Joints.servo(joint, angle, speed?)` / `Joints.spin(joint, speed)` set the joint's attributes (degrees, degrees/s; the old hinge angles still apply) |
-| `Welds` | Welds a model into one rigid assembly; used by `Joints` for the gate arms, brushes, blaster spinners and dryer fans, which are saved unanchored and unwelded |
+| `Joints` | Runs first. Replaces the machines' physics with scripted joints: welds each moving part into a rigid assembly (`Welds`), turns every legacy `Rotate` joint (the wheel blaster heads) and every `HingeConstraint` into a `Motor6D` (named `Joint`, or the hinge's own name), gives each dryer `FanMotor` a `Joint` instead of its surface motor, removes every other constraint / body mover and anchors anything left loose. Moving parts stop colliding, except the gate arms. `Joints.servo(joint, angle, speed?)` / `Joints.spin(joint, speed)` set the joint's attributes (degrees, degrees/s; the old hinge angles still apply) |
+| `Welds` | Welds a model into one rigid assembly; used by `Joints` for the gate arms, brushes, wheel blaster heads and dryer fans, which are saved unanchored and unwelded |
 | `Cash` | leaderstats `Cash`: start with 15, +10 every 120 s. `Cash.charge(player, price)` |
 | `WashLine` | The customer flow: kiosk payment → entry gate opens when the wash is free → car drives in → wash runs. Also sets the entrance `ProgressScreen` (Select / Good / Occupied). |
 | `Kiosk` | The pay terminal (`Selections`): menu, confirm, tap a "Debit Card" on the EFT reader. Fills the screen's texts from `Config` and sets the payment `State` |
@@ -44,13 +44,13 @@ Server (`src/server`), started by `init.server.luau` in this order:
 | `Wash/Conveyor` | Belts, `moveCarTo` with position triggers |
 | `Wash/Arches` | The seven arches in `New`: jets, sounds, `LightMode` / `LightSince` |
 | `Wash/Brushes` | Wrap-around and rocker brushes |
-| `Wash/Blasters` | DuraBlaster wheel blasters, and the `Eye` that swings their arms in |
+| `Wash/Blasters` | Rotary wheel blasters (`RotaryWheelBlasters`): three spinning heads per side; the `Sensor` beam remembers where the car's wheels are, and the nozzles fire while a wheel is in front of the heads |
 | `Wash/Dryers` | The KWS Storm Dryers. Each starts only when the car's nose is right under its first `AirOutlet` (`Config.DryerLead`), one at a time (`Config.DryerStagger` apart): Startup sound (cut after `DryerStartupSeconds`), then the hum; on stop the hum fades under the Stop sound. Volume and hearing distance are in `Config` |
 | `Wash/Screens` | Attributes for the Wash Time / Dry Time screens |
 
 Client (`src/client`), one LocalScript each, all driven by attributes the server sets
 and by server time, so every player sees the same thing with no remotes:
-`Joints` (moves the gate arms, brushes, blaster arms and spinners, dryer fans
+`Joints` (moves the gate arms, brushes, wheel blaster heads, dryer fans
 by setting each joint's `Transform`, with smooth easing), `LightShow` (ceiling lights and wall hexagons), `ArchLights` (arch LEDs),
 `TimerScreens` (Wash Time / Dry Time screens), `ProgressScreen` (entrance screen
 animations), `KioskScreen` (pay terminal screen animations).
@@ -80,7 +80,7 @@ and reconnect.
 ## Layout of Workspace.CarWash
 
 - `ConveyorPart` (`Conveyor1`–`Conveyor4`) pulls the car through in one pass:
-  `DuraBlasters` → `WrapArounds` → `RockerBrushes` → the arches in `New` → the dryers.
+  `RotaryWheelBlasters` → `WrapArounds` → `RockerBrushes` → the arches in `New` → the dryers.
   Speeds are in `Config`: `TunnelSpeed` (1.2 studs/s) through the
   blasters and brushes, each program's `archSpeed` through the arches (Small 0.9, Middle 0.75,
   Full 0.6, so bigger washes give each stage more time), and `ConveyorSpeed` (2)
@@ -133,10 +133,15 @@ and reconnect.
   `sounds/generate.py` makes them from scratch (needs `numpy`, `scipy` and `ffmpeg`);
   loops are seamless and starts end at loop level. Run
   `python sounds/generate.py [arch ... | dryer]` to re-render.
-- `KWS Storm Dryer 1` and `2`, `DuraBlasters` and `Heaxgonsystem` used to sit loose
+- `KWS Storm Dryer 1` and `2`, the old `DuraBlasters` and `Heaxgonsystem` used to sit loose
   in Workspace.
-- Machine particles: `DuraBlasters` nozzles use the same jet / mist / droplet set as
-  the High Pressure arch (all named `HP`). Each wrap-around and rocker brush has a
+- Machine particles: each `RotaryWheelBlasters` head fires from five nozzles (`hp1`–`hp5`),
+  each with a `BlasterJet` (the water pack's `shards`), `BlasterMist` (`mist`) and
+  `BlasterDrops` (`dots`), cloned from `ReplicatedStorage["Particle templates"]` and scaled
+  down so the jets reach just past the wheel tracks. They fire across the lane along the spin
+  axis, so they spiral as the heads turn.
+  Their legacy `Rotate` joints become scripted spin joints and their old `Weld` scripts
+  are removed at startup. Each wrap-around and rocker brush has a
   soapy nozzle spray plus a `FlingFx` ring (welded to the brush, cylinder-shaped
   emitters named `Fling`) that throws water and suds off the spinning brush;
   `Wash/Brushes` toggles every emitter under a brush with it. Each dryer spout has

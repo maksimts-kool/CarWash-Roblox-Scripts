@@ -64,6 +64,11 @@ function Car.has(): boolean
 	return state.seat ~= nil and state.seat:IsDescendantOf(workspace)
 end
 
+-- The car's model, while there is a real car.
+function Car.model(): Model?
+	return if Car.has() then state.model else nil
+end
+
 -- Z of the car's nose (the car travels toward -Z).
 function Car.front(): number
 	if Car.has() then

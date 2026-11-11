@@ -19,13 +19,11 @@ local ASSEMBLIES = {
 	{ "WrapArounds", "Brushes", "BrushTwo", "BrushMotor" },
 	{ "RockerBrushes", "BrushTwo", "RockerBrush", "BrushPart" },
 	{ "RockerBrushes", "BrushTwo", "RockerBrush", "BrushMotor" },
-	{ "DuraBlasters", "LeftDuraBlaster", "WheelBlasterFrame" },
-	{ "DuraBlasters", "LeftDuraBlaster", "BottomSpinner" },
-	{ "DuraBlasters", "LeftDuraBlaster", "TopSpinner" },
-	{ "DuraBlasters", "RightDuraBlaster", "WheelBlasterFrame" },
-	{ "DuraBlasters", "RightDuraBlaster", "BottomSpinner" },
-	{ "DuraBlasters", "RightDuraBlaster", "TopSpinner" },
 }
+
+-- The rotary wheel blasters' heads (BlasterPart, BlasterPart2, ...) under each
+-- Blaster model; each is welded to its Motor, the part its Rotate joint turns.
+local WHEEL_BLASTERS = "RotaryWheelBlasters"
 
 -- Every model with this name under a dryer is a fan assembly (motor + blades).
 local DRYER_FAN = "DryerFan"
@@ -43,7 +41,7 @@ local function resolve(path)
 	return instance
 end
 
-function Welds.weld(model: Instance)
+function Welds.weld(model: Instance, root: BasePart?)
 	local parts = {}
 	for _, item in model:GetDescendants() do
 		if item:IsA("BasePart") then
@@ -51,7 +49,7 @@ function Welds.weld(model: Instance)
 		end
 	end
 
-	local root = (model:IsA("Model") and model.PrimaryPart) or parts[1]
+	root = root or (model:IsA("Model") and model.PrimaryPart) or parts[1]
 	if not root then
 		warn(`Welds: nothing to weld in {model:GetFullName()}`)
 		return
@@ -79,6 +77,25 @@ function Welds.weldAll()
 		else
 			warn(`Welds: CarWash.{table.concat(path, ".")} not found`)
 		end
+	end
+
+	local blasters = CarWash:FindFirstChild(WHEEL_BLASTERS)
+	if blasters then
+		for _, blaster in blasters:GetChildren() do
+			for _, head in blaster:GetChildren() do
+				local motor = head:FindFirstChild("Motor")
+				if head:IsA("Model") and head.Name:match("^BlasterPart") and motor and motor:IsA("BasePart") then
+					-- the old weld script the heads were saved with, if it hasn't run yet
+					local script = head:FindFirstChild("Weld")
+					if script and script:IsA("Script") then
+						script:Destroy()
+					end
+					Welds.weld(head, motor)
+				end
+			end
+		end
+	else
+		warn(`Welds: CarWash.{WHEEL_BLASTERS} not found`)
 	end
 
 	for _, child in CarWash:GetChildren() do

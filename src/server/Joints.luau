@@ -2,17 +2,20 @@
 -- server starts, so nothing in Workspace.CarWash is simulated any more.
 --
 -- The place is built with HingeConstraints (gate arms, brush swings and
--- spins, blaster arms and spinners), legacy surface motors (the dryer fans)
--- and the odd rope / spring / mover. Here, in one go before physics runs:
+-- spins), legacy Rotate joints spun by BodyAngularVelocities (the wheel
+-- blaster heads), legacy surface motors (the dryer fans) and the odd rope /
+-- spring / mover. Here, in one go before physics runs:
 --
 --   1. the moving models are welded into rigid assemblies (Welds);
---   2. every HingeConstraint becomes a Motor6D in the same place, joining the
+--   2. every Rotate / RotateP / RotateV joint becomes a Motor6D "Joint" in the
+--      same place, turning about the same axis (its C0's Z axis);
+--   3. every HingeConstraint becomes a Motor6D in the same place, joining the
 --      moving side to the side that holds it (anchored, or itself held by a
 --      joint made earlier). Hinges named "HingeConstraint" become "Joint";
---      others keep their name (e.g. the blasters' "Move");
---   3. every FanMotor gets a Motor6D "Joint" spinning it about its right face,
+--      others keep their name;
+--   4. every FanMotor gets a Motor6D "Joint" spinning it about its right face,
 --      on a hidden anchored pivot, and its surface motor is removed;
---   4. every other constraint and body mover is removed, and anything left
+--   5. every other constraint and body mover is removed, and anything left
 --      loose is anchored where it is.
 --
 -- The moving parts all hang off anchored parts through these joints, so they
@@ -39,6 +42,8 @@ local MAX_SERVO_SPEED = 360
 -- Parts moved by a joint stop colliding (they'd shove the car), except these
 -- barrier arms, which still have to stop a car that hasn't paid.
 local KEEP_COLLISION = { "GateEN", "GateEX" }
+-- The legacy joints that turned a part (driven by a BodyAngularVelocity).
+local ROTATE_CLASSES = { Rotate = true, RotateP = true, RotateV = true }
 
 local Joints = {}
 Joints.TAG = TAG
@@ -229,6 +234,39 @@ local function convertHinges(skip: (Instance) -> boolean)
 	end
 end
 
+-- The legacy Rotate joints turn their parts about the Z axis of C0 (in
+-- Part0's space); each becomes a Motor6D turning about that same axis, hung
+-- off whichever side is held. They start stopped.
+local function convertRotates(skip: (Instance) -> boolean)
+	for _, item in CarWash:GetDescendants() do
+		if not (item:IsA("JointInstance") and ROTATE_CLASSES[item.ClassName]) or skip(item) then
+			continue
+		end
+		local joint = item :: JointInstance
+		local name = joint:GetFullName()
+		local p0, p1, where = joint.Part0, joint.Part1, joint.Parent
+		local axis = p0 and p0.CFrame * joint.C0
+		joint:Destroy()
+		if not (p0 and p1 and axis and where) then
+			warn(`Joints: {name} isn't joining two parts; removed`)
+			continue
+		end
+
+		local held0, held1 = isHeld(p0), isHeld(p1)
+		if held0 == held1 then
+			warn(`Joints: {name} can't spin: {if held0 then "both sides are" else "neither side is"} held`)
+			continue
+		end
+		local holder, moving = if held0 then p0 else p1, if held0 then p1 else p0
+		-- the joint turns about its pivot's X axis: put the Rotate's Z axis there
+		local pivot = axis * CFrame.fromMatrix(Vector3.zero, Vector3.zAxis, Vector3.xAxis)
+		local motor = makeJoint(holder, moving, holder.CFrame:ToObjectSpace(pivot), "Joint", where)
+		motor:SetAttribute("Sign", 1)
+		motor:SetAttribute("Rest", 0)
+		Joints.spin(motor, 0)
+	end
+end
+
 local function convertFans()
 	for _, unit in CarWash:GetChildren() do
 		if not unit.Name:match("^KWS Storm Dryer") then
@@ -312,6 +350,7 @@ function Joints.setup()
 	end
 
 	Welds.weldAll()
+	convertRotates(skip)
 	convertHinges(skip)
 	convertFans()
 

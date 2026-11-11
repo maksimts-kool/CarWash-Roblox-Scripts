@@ -246,6 +246,7 @@ function Wash.run(programKey: string, entryHit: BasePart?)
 	assert(program, "Unknown wash program: " .. tostring(programKey))
 
 	Car.reset(Brushes.PICKUP_Z)
+	Blasters.reset()
 	if entryHit then
 		Car.capture(entryHit)
 	end
@@ -298,7 +299,7 @@ end
 function Wash.start()
 	Wash.reset()
 	setPhase("Idle")
-	Blasters.startContouring()
+	Blasters.startSensing()
 end
 
 return Wash
