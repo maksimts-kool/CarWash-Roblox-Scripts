@@ -1,6 +1,0 @@
---� Rhino1004 �
-
-while true do
-script.Parent.Velocity = script.Parent.CFrame.lookVector *0.8
-wait(0.1)
-end
