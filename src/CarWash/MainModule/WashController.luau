@@ -268,9 +268,19 @@ local function setWrapAngle(angle)
 	Wraps.BrushTwo.BrushPart.MotorHold.HingeConstraint.TargetAngle = -angle
 end
 
+-- Every particle layer on a machine: its nozzle sprays and, on the brushes,
+-- the FlingFx ring that throws water off the spinning brush.
+local function setEmittersUnder(root, on)
+	for _, item in root:GetDescendants() do
+		if item:IsA("ParticleEmitter") then
+			item.Enabled = on
+		end
+	end
+end
+
 local function setWraps(on)
 	for _, brush in { Wraps.BrushOne, Wraps.BrushTwo } do
-		brush.BrushPart.Nozzle.ParticleEmitter.Enabled = on
+		setEmittersUnder(brush, on)
 	end
 	Wraps.BrushOne.BrushMotor.MotorMain.HingeConstraint.AngularVelocity = on and 15 or 0
 	Wraps.BrushTwo.BrushMotor.MotorMain.HingeConstraint.AngularVelocity = on and -15 or 0
@@ -285,9 +295,7 @@ end
 
 local function setRockers(on)
 	for index, brush in { Rockers.BrushOne.RockerBrush, Rockers.BrushTwo.RockerBrush } do
-		for _, nozzle in { brush.Nozzle, brush.Nozzle2, brush.Nozzle3 } do
-			nozzle.ParticleEmitter.Enabled = on
-		end
+		setEmittersUnder(brush, on)
 		brush.BrushMotor.MotorMain.HingeConstraint.AngularVelocity = on and 15 or 0
 		brush.BrushPart.MotorHold.HingeConstraint.TargetAngle = on and (index == 1 and 30 or -30) or 0
 	end
@@ -306,11 +314,17 @@ local function setFans(dryer, speed)
 	end
 end
 
+-- The air streaks, mist and droplets blowing out of each dryer spout (AirOutlet parts).
+local function setDryerAir(dryer, on)
+	setEmitters(emittersIn(dryer, "DryerAir"), on)
+end
+
 local function startDryers()
 	dryersRunning = true
 	for _, dryer in Dryers do
 		dryer.Startup:Play()
 		setFans(dryer, 1)
+		setDryerAir(dryer, true)
 		dryer.Dryer:Play()
 	end
 end
@@ -319,6 +333,7 @@ local function stopDryers()
 	dryersRunning = false
 	for _, dryer in Dryers do
 		setFans(dryer, 0)
+		setDryerAir(dryer, false)
 		dryer.Stop.Disabled = false
 		dryer.Stop2.Disabled = false
 	end
@@ -650,6 +665,9 @@ function WashController:Reset()
 	setBelts(0)
 	if dryersRunning then
 		stopDryers()
+	end
+	for _, dryer in Dryers do
+		setDryerAir(dryer, false)
 	end
 	releaseTow()
 	WashDisplay.Value = "---"

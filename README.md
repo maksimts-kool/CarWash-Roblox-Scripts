@@ -93,6 +93,14 @@ instances that have no files (parts, sounds, models).
   `python sounds/generate.py [arch ...]` to re-render.
 - `KWS Storm Dryer 1` and `2`, `DuraBlasters` and `Heaxgonsystem` used to sit loose
   in Workspace.
+- Machine particles: `DuraBlasters` nozzles use the same jet / mist / droplet set as
+  the High Pressure arch (all named `HP`). Each wrap-around and rocker brush has a
+  soapy nozzle spray plus a `FlingFx` ring (welded to the brush, cylinder-shaped
+  emitters named `Fling`) that throws water and suds off the spinning brush;
+  `WashController` toggles every emitter under a brush with it. Each dryer spout has
+  an `AirOutlet` part aimed along the spout with faint air wisps and haze (`DryerAir`),
+  switched with the fans. Particles on the moving brushes and blaster heads only
+  animate properly in play mode, not in Studio's edit view.
 - `Lights` holds the 16 ceiling lights. `Building` holds the walls, roof and grading.
 - `Selections_Old` is the old kiosk. Its scripts expect parts that this wash doesn't
   have.
