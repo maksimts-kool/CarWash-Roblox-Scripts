@@ -41,6 +41,11 @@ instances that have no files (parts, sounds, models).
   every 120 s. The pay terminal charges from it.
 - `ConveyorPart` (`Conveyor1`–`Conveyor4`) pulls the car through in one pass:
   `DuraBlasters` → `WrapArounds` → `RockerBrushes` → the arches in `New` → the dryers.
+  Speeds are at the top of `WashController`: `TUNNEL_SPEED` (1.2 studs/s) through the
+  blasters and brushes, `ARCH_SPEED` through the arches (Small 0.9, Middle 0.75,
+  Full 0.6, so bigger washes give each stage more time), and `CONVEYOR_SPEED` (2)
+  into the dryers and out. The car eases between speeds. A Full wash takes about
+  2 minutes of washing, then 60 s of drying.
 - `New` holds the arches that replaced the old gantry (`Machine`, `Arm`, `Arm2`, the
   wheels, limits and rails, now parked in `ServerStorage.RemovedGantry`). In tunnel
   order they do the gantry's seven stages:
@@ -51,7 +56,17 @@ instances that have no files (parts, sounds, models).
   the entrance is decoration. The arches have no scripts of their own: `WashController`
   turns each one's jets and `Speaker` sounds (`Start` / `Loop` / `Stop`) on as the
   car's nose reaches it and off once the tail clears it, and sets the arch's
-  `LightMode` / `LightSince` attributes. `New.ArchLights` (RunContext Client) reads
+  `LightMode` / `LightSince` attributes. Each nozzle's spray is layered from
+  emitters sharing the stage's name (so the controller toggles them together):
+  streaky jets, a thin mist (`Layer` attribute) and, for high pressure, falling
+  droplets. Textures come from the two packs in Workspace. From
+  `Particle Pack (Water Based)`: `shards` (16171607099) for the water jets, rain and
+  wax drips, `dots` (16171528032) for droplets, the animated `mist` (16172858603)
+  for spray mist and the clear-coat cloud, and the `water 9` splash (14261754295) on
+  the opening blasts (`HPStart`, `Rinse2`; marked `Splash`). From `Particle effects`:
+  the animated gas cloud (10034873151) for the foam, the bubble (1084955488), the
+  star glints (8611887703) and the flame flipbook for the hot-wax haze. The water
+  pack's `bubbles` texture (16694595394) doesn't load in this place. `New.ArchLights` (RunContext Client) reads
   those and animates each arch's `Rope` (the Lava arch's `LED` bar) every frame from
   server time, so all arches and players stay in sync. The look is kept calm: a faint
   blue idle glow that rolls down the tunnel, one colour per stage that breathes

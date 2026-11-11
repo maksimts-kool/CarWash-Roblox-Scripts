@@ -3,7 +3,7 @@
 -- charges washes from leaderstats.Cash.
 local Players = game:GetService("Players")
 
-local STARTING_CASH = 10
+local STARTING_CASH = 15
 local PAYCHECK_AMOUNT = 10
 local PAYCHECK_INTERVAL = 120 -- seconds
 
