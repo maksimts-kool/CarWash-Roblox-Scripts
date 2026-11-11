@@ -10,8 +10,10 @@ local Wraps = CarWash.WrapArounds.Brushes
 local Rockers = CarWash.RockerBrushes
 local Blasters = CarWash.DuraBlasters
 local ExitGate = CarWash.GateEX.Frame.MotorSupport.HingeConstraint
-local WashDisplay = CarWash.TimerWash.Value
-local DryDisplay = CarWash.Timer.Value
+-- The Wash Time and Dry Time screens. CarWash.TimerScreens draws them on the
+-- clients from the attributes setScreen puts on these models.
+local WashScreen = CarWash.TimerWash
+local DryScreen = CarWash.TimerDryer
 
 local Belts = {}
 for _, child in CarWash.ConveyorPart:GetChildren() do
@@ -170,6 +172,19 @@ PROGRAMS.Middle.ClearCoat = true
 PROGRAMS.Full.ClearCoat = true
 PROGRAMS.Full.HotWax = true
 
+-- What the Wash Time screen calls each program and stage.
+local PROGRAM_NAMES = { Small = "Small Wash", Middle = "Middle Wash", Full = "Full Wash" }
+local BRUSH_STAGE = "Brush Wash"
+local STAGE_NAMES = {
+	Presoak = "Presoak",
+	HighPressure = "High Pressure",
+	Foam = "Triple Foam",
+	Rinse = "Rinse",
+	ClearCoat = "Clear Coat",
+	HotWax = "Hot Wax",
+	SpotFree = "Spot-Free Rinse",
+}
+
 local car = {}
 local runId = 0
 local dryersRunning = false
@@ -189,23 +204,23 @@ local function clearCarPosition()
 	CarWash:SetAttribute("CarLength", nil)
 end
 
-local function sleepUntil(moment)
-	local remaining = moment - os.clock()
-	if remaining > 0 then
-		task.wait(remaining)
+-- State is "Idle", "Waiting", "Running" or "Done". Any field left out is cleared.
+-- EndsAt is a server time, so every client counts down smoothly on its own.
+-- StageEndsAt / StageTotal time the current step, for the progress bar.
+local SCREEN_FIELDS = { "EndsAt", "Total", "Stage", "StageIndex", "StageCount", "StageEndsAt", "StageTotal" }
+
+local function setScreen(screen, state, fields)
+	fields = fields or {}
+	for _, key in SCREEN_FIELDS do
+		screen:SetAttribute(key, fields[key])
 	end
+	screen:SetAttribute("State", state)
 end
 
-local function startCountdown(display, format, seconds)
-	local myRun = runId
-	local endsAt = os.clock() + seconds
-	task.spawn(function()
-		while myRun == runId and os.clock() < endsAt do
-			display.Value = format:format(math.ceil(endsAt - os.clock()))
-			task.wait(0.1)
-		end
-	end)
-	return endsAt
+local function setScreenProgram(washType)
+	local name = washType and PROGRAM_NAMES[washType]
+	WashScreen:SetAttribute("Program", name)
+	DryScreen:SetAttribute("Program", name)
 end
 
 -- The clients animate the LEDs; the server only says which show to run and since when.
@@ -584,22 +599,83 @@ local function washSecondsLeft(zone)
 	return beforeArches / TUNNEL_SPEED + (left - beforeArches) / zone.archSpeed
 end
 
--- Wash Time shows how long until the car's tail clears the last arch it uses.
+-- Seconds until the car's nose reaches z, at the zone speeds. Only right while
+-- the tail is still in the arches, which holds for every stage boundary.
+local function secondsUntilFront(zone, z)
+	local front = carFront()
+	local left = front - z
+	if left <= 0 then
+		return 0
+	end
+	local beforeArches = math.clamp(front - zone.archStartZ, 0, left)
+	return beforeArches / TUNNEL_SPEED + (left - beforeArches) / zone.archSpeed
+end
+
+-- Seconds left in the current step: until the next step's arch switches on,
+-- or for the last step until the whole wash is done.
+local function stageSecondsLeft(zone)
+	local nextStart = zone.stageStarts[zone.stage + 1]
+	if nextStart then
+		return secondsUntilFront(zone, nextStart)
+	end
+	return washSecondsLeft(zone)
+end
+
+-- Wash Time shows how long until the car's tail clears the last arch it uses,
+-- and its progress bar how far through the current step the car is. Both
+-- estimates follow the car, so they're only republished when they drift.
+local WASH_ENDS_AT_TOLERANCE = 0.5
+
+local function publishStage(zone)
+	local left = stageSecondsLeft(zone)
+	zone.stageEndsAt = workspace:GetServerTimeNow() + left
+	WashScreen:SetAttribute("StageTotal", math.max(left, 1))
+	WashScreen:SetAttribute("StageEndsAt", zone.stageEndsAt)
+end
+
 local function startWashCountdown(zone)
 	local myRun = runId
+	local endsAt = workspace:GetServerTimeNow() + washSecondsLeft(zone)
+	zone.stage = 1
+	setScreen(WashScreen, "Running", {
+		EndsAt = endsAt,
+		Total = math.max(washSecondsLeft(zone), 1),
+		Stage = BRUSH_STAGE,
+		StageIndex = 1,
+		StageCount = #zone.stageStarts,
+	})
+	publishStage(zone)
 	task.spawn(function()
 		while myRun == runId do
-			local remaining = math.ceil(washSecondsLeft(zone))
-			if remaining <= 0 then
+			local left = washSecondsLeft(zone)
+			if left <= 0 then
 				break
 			end
-			WashDisplay.Value = ("%03d"):format(remaining)
+			local now = workspace:GetServerTimeNow()
+			if math.abs(now + left - endsAt) > WASH_ENDS_AT_TOLERANCE then
+				endsAt = now + left
+				WashScreen:SetAttribute("EndsAt", endsAt)
+			end
+			local stageEstimate = now + stageSecondsLeft(zone)
+			if math.abs(stageEstimate - zone.stageEndsAt) > WASH_ENDS_AT_TOLERANCE then
+				zone.stageEndsAt = stageEstimate
+				WashScreen:SetAttribute("StageEndsAt", stageEstimate)
+			end
 			task.wait(0.1)
 		end
 		if myRun == runId then
-			WashDisplay.Value = "---"
+			setScreen(WashScreen, "Done")
 		end
 	end)
+end
+
+local function setWashStage(zone, index, name)
+	if WashScreen:GetAttribute("State") == "Running" then
+		zone.stage = index
+		WashScreen:SetAttribute("StageIndex", index)
+		WashScreen:SetAttribute("Stage", name)
+		publishStage(zone)
+	end
 end
 
 -- One continuous pull from the pickup point to the dryers: blasters, wrap-arounds,
@@ -622,10 +698,17 @@ local function runTunnel(program, archSpeed)
 		{ ready = rearPasses(ROCKER_END_Z), run = function() setRockers(false) end },
 	}
 
-	local zone = { archStartZ = -math.huge, archEndZ = math.huge, archSpeed = archSpeed }
+	-- stageStarts: where the car's nose is when each step begins. The brushes
+	-- are step 1 (already running), then one step per arch.
+	local zone = { archStartZ = -math.huge, archEndZ = math.huge, archSpeed = archSpeed, stageStarts = { PICKUP_Z } }
 	for _, arch in ArchOrder do
 		if program[arch.key] then
-			table.insert(triggers, { ready = frontReaches(arch.z + ARCH_LEAD), run = function() setArch(arch, true) end })
+			table.insert(zone.stageStarts, arch.z + ARCH_LEAD)
+			local stageIndex = #zone.stageStarts
+			table.insert(triggers, { ready = frontReaches(arch.z + ARCH_LEAD), run = function()
+				setArch(arch, true)
+				setWashStage(zone, stageIndex, STAGE_NAMES[arch.key] or arch.key)
+			end })
 			table.insert(triggers, { ready = rearPasses(arch.z - ARCH_TRAIL), run = function() setArch(arch, false) end })
 			-- start slowing a little before the first arch so it's already crawling when it switches on
 			zone.archStartZ = math.max(zone.archStartZ, arch.z + ARCH_LEAD + 1.5)
@@ -646,8 +729,12 @@ local function runDryers()
 	if not dryersRunning then
 		startDryers()
 	end
-	sleepUntil(startCountdown(DryDisplay, "%02d", DRY_SECONDS))
-	DryDisplay.Value = "--"
+	setScreen(DryScreen, "Running", {
+		EndsAt = workspace:GetServerTimeNow() + DRY_SECONDS,
+		Total = DRY_SECONDS,
+	})
+	task.wait(DRY_SECONDS)
+	setScreen(DryScreen, "Done")
 	stopDryers()
 end
 
@@ -668,6 +755,9 @@ function WashController:Run(washType, entryHit)
 		captureVehicle(entryHit)
 	end
 
+	setScreenProgram(washType)
+	setScreen(WashScreen, "Waiting")
+	setScreen(DryScreen, "Waiting")
 	waitForCar()
 	grabCar()
 	publishCarPosition(true)
@@ -679,6 +769,9 @@ function WashController:Run(washType, entryHit)
 	releaseCar()
 	setPhase("Finished")
 	clearCarPosition()
+	setScreen(WashScreen, "Idle")
+	setScreen(DryScreen, "Idle")
+	setScreenProgram(nil)
 end
 
 -- The paid customer's gate is open: the tunnel lights power up for them.
@@ -711,8 +804,9 @@ function WashController:Reset()
 	end
 	releaseTow()
 	clearCarPosition()
-	WashDisplay.Value = "---"
-	DryDisplay.Value = "--"
+	setScreen(WashScreen, "Idle")
+	setScreen(DryScreen, "Idle")
+	setScreenProgram(nil)
 end
 
 -- Stops a wash that went wrong and lets the car out.
