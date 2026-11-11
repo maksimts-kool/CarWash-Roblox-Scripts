@@ -1,0 +1,14 @@
+script.Parent.manifold1.Presoak.Enabled = false
+script.Parent.manifold2.Presoak.Enabled = false
+script.Parent.manifold3.Presoak.Enabled = false
+script.Parent.manifold4.Presoak.Enabled = false
+script.Parent.manifold5.Presoak.Enabled = false
+script.Parent.manifold6.Presoak.Enabled = false
+script.Parent.manifold7.Presoak.Enabled = false
+script.Parent.manifold8.Presoak.Enabled = false
+script.Parent.Rope.Script.Disabled = true
+script.Parent.Rope.Transparency = 0.5
+script.Parent.Rope.Material = ("SmoothPlastic")
+script.Parent.Rope.BrickColor = BrickColor.new ("Medium stone grey")
+script.Parent.Rope.PointLight.Enabled = false
+script.Disabled = true

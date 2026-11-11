@@ -1,0 +1,4 @@
+# Workspace config for Argon (overrides ~/.argon/config.toml)
+move_to_bin = true      # Studio-side deletes go to the trash, not permanent
+keep_duplicates = false # names under CarWash are unique; don't add UUID suffixes
+lua_extension = false   # write .luau files
