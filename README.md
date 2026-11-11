@@ -48,16 +48,34 @@ instances that have no files (parts, sounds, models).
   `(TripleFoam)` foam bars plus the gantry's `T1` / `T2` foam cannons,
   `(SingleRinse)` second high-pressure pass, `(RainOff)` clear coat,
   `Lava Wax Arch` hot wax, `(RainBar)` spot-free rinse. `KWS Dyna Arch (Mapping)` at
-  the entrance is decoration. The arches have no scripts: `WashController` turns each
-  one's jets, rope light and `Speaker` sounds (`Start` / `Loop` / `Stop`) on as the
-  car's nose reaches it and off once the tail clears it. `PROGRAMS` in
+  the entrance is decoration. The arches have no scripts of their own: `WashController`
+  turns each one's jets and `Speaker` sounds (`Start` / `Loop` / `Stop`) on as the
+  car's nose reaches it and off once the tail clears it, and sets the arch's
+  `LightMode` / `LightSince` attributes. `New.ArchLights` (RunContext Client) reads
+  those and animates each arch's `Rope` (the Lava arch's `LED` bar) every frame from
+  server time, so all arches and players stay in sync. The look is kept calm: a faint
+  blue idle glow that rolls down the tunnel, one colour per stage that breathes
+  slowly, and soft fades in and out. The constants at the top of the script set the
+  brightness and timing. `PROGRAMS` in
   `WashController` picks the arches per wash: Small runs presoak, both HP passes,
   foam and spot free; Middle adds clear coat; Full adds hot wax.
-  Arch sounds use IDs this game can play: the spray loop is `ssss` (10487832846, the
-  same hiss as the brushes) pitched per arch, and the start is the wrap-arounds' `Air`
-  burst (1115758787). The foam arch keeps its own start/stop, and the lava arch keeps
-  its own three sounds. The old gantry's sound IDs fail with "Requester does not have
-  permission".
+  Each arch's `Speaker` plays the generated sounds from `sounds/` (uploaded assets):
+
+  | Arch | Start | Loop | Stop |
+  |---|---|---|---|
+  | DoublePresoak | 78449761318939 | 83406885321749 | 126211593873197 |
+  | HighPressure, SingleRinse | 101465800375105 | 130128502941075 | 140142245336534 |
+  | TripleFoam | 123247818847372 | 104061137028834 | 73416226262067 |
+  | RainOff | 95918102327272 | 78696893509273 | 117294059102337 |
+  | RainBar | 80078750451926 | 76377020923201 | 135672204909546 |
+
+  The Lava Wax Arch keeps the old gantry's hot wax sounds (6980328128 / 6980328902 /
+  6980329506).
+- `sounds/` holds generated replacements, one `<arch>_start/loop/stop.ogg` set for
+  presoak, highpressure (also used by SingleRinse), foam, clearcoat and spotfree.
+  `sounds/generate.py` makes them from scratch (needs `numpy`, `scipy` and `ffmpeg`);
+  loops are seamless and starts end at loop level. Run
+  `python sounds/generate.py [arch ...]` to re-render.
 - `KWS Storm Dryer 1` and `2`, `DuraBlasters` and `Heaxgonsystem` used to sit loose
   in Workspace.
 - `Lights` holds the 16 ceiling lights. `Building` holds the walls, roof and grading.

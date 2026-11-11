@@ -34,14 +34,6 @@ local DEFAULT_CAR_LENGTH = 14
 local EXIT_GATE_OPEN_SECONDS = 5
 local ARCH_LEAD = 1.5 -- an arch starts when the car's nose is this far before it
 local ARCH_TRAIL = 1.5 -- and stops once the car's tail is this far past it
-local ROPE_COLORS = {
-	Color3.fromRGB(255, 0, 0),
-	Color3.fromRGB(255, 255, 0),
-	Color3.fromRGB(0, 255, 0),
-	Color3.fromRGB(33, 84, 185),
-	Color3.fromRGB(255, 0, 191),
-	Color3.fromRGB(170, 85, 0),
-}
 
 -- Halfway between the left wheel track and the right belt.
 local LANE_X = (CarWash.ConveyorPart.Conveyor4.Position.X + CarWash.ConveyorPart.Conveyor3.Position.X) / 2
@@ -78,8 +70,8 @@ local function setEmitters(list, on)
 end
 
 -- Arches in CarWash.New, in the order the car meets them. Each one has its
--- jets, a rope light that cycles colours while it runs, and a Speaker part with
--- Start / Loop / Stop sounds.
+-- jets, a Rope LED (animated on the clients by New.ArchLights from the
+-- LightMode / LightSince attributes) and a Speaker part with Start / Loop / Stop sounds.
 local ArchOrder = {}
 
 local function later(arch, seconds, callback)
@@ -97,7 +89,6 @@ local function defineArch(key, modelName, setup)
 		key = key,
 		model = model,
 		z = model.Frame:GetBoundingBox().Position.Z,
-		rope = model:FindFirstChild("Rope", true),
 		speaker = model:FindFirstChild("Speaker"),
 		run = 0,
 		active = false,
@@ -148,13 +139,12 @@ end)
 defineArch("ClearCoat", "KWS Dyna Arch (RainOff)", "Sealent")
 defineArch("HotWax", "Lava Wax Arch", function(arch, model)
 	local lava = model.Lava
+	-- The LED bar is animated by New.ArchLights like the other arches' ropes.
 	arch.start = function()
-		lava.LED.PointLight.Enabled = true
 		later(arch, 1, function() lava.RainBar.Wax2.Enabled = true end)
 		later(arch, 1.7, function() lava.RainBar.Wax.Enabled = true end)
 	end
 	arch.stop = function()
-		lava.LED.PointLight.Enabled = false
 		lava.RainBar.Wax2.Enabled = false
 		lava.RainBar.Wax.Enabled = false
 	end
@@ -196,38 +186,10 @@ local function startCountdown(display, format, seconds)
 	return endsAt
 end
 
-local function setRope(arch, on)
-	local rope = arch.rope
-	if not rope then
-		return
-	end
-	local light = rope:FindFirstChildWhichIsA("PointLight")
-	if on then
-		local myRun = arch.run
-		rope.Material = Enum.Material.Neon
-		rope.Transparency = 0
-		if light then
-			light.Enabled = true
-		end
-		task.spawn(function()
-			local index = 0
-			while arch.run == myRun do
-				index = index % #ROPE_COLORS + 1
-				rope.Color = ROPE_COLORS[index]
-				if light then
-					light.Color = ROPE_COLORS[index]
-				end
-				task.wait(0.5)
-			end
-		end)
-	else
-		rope.Material = Enum.Material.SmoothPlastic
-		rope.Transparency = 0.5
-		rope.BrickColor = BrickColor.new("Medium stone grey")
-		if light then
-			light.Enabled = false
-		end
-	end
+-- The clients animate the LEDs; the server only says which show to run and since when.
+local function setLights(arch, on)
+	arch.model:SetAttribute("LightMode", if on then arch.key else "Idle")
+	arch.model:SetAttribute("LightSince", workspace:GetServerTimeNow())
 end
 
 local function setArchSound(arch, on)
@@ -269,7 +231,7 @@ local function setArch(arch, on, force)
 	else
 		arch.stop()
 	end
-	setRope(arch, on)
+	setLights(arch, on)
 	if not force then
 		setArchSound(arch, on)
 	end
