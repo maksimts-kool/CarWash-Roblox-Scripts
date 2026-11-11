@@ -39,11 +39,27 @@ instances that have no files (parts, sounds, models).
   and the wash timeline. `Script` starts it.
 - `CashSystem` creates the leaderstats `Cash` value: you start with 10 and get +10
   every 120 s. The pay terminal charges from it.
-- `Arm` / `Arm2` → `spray1`…`spray18`. Each one holds `WashOn`, `WashOff`,
-  `WashWatcher`, `SoapWatcher` and `RinseWatcher`.
-- `Wheel1`–`Wheel4`, `ConveyorPart` (`Conveyor1`–`Conveyor4`).
-- `DuraBlasters`, `KWS Storm Dryer 1` and `2`, `KWS Dyna Arch (DoublePresoak)` and
-  `Heaxgonsystem` used to sit loose in Workspace.
+- `ConveyorPart` (`Conveyor1`–`Conveyor4`) pulls the car through in one pass:
+  `DuraBlasters` → `WrapArounds` → `RockerBrushes` → the arches in `New` → the dryers.
+- `New` holds the arches that replaced the old gantry (`Machine`, `Arm`, `Arm2`, the
+  wheels, limits and rails, now parked in `ServerStorage.RemovedGantry`). In tunnel
+  order they do the gantry's seven stages:
+  `KWS Dyna Arch (DoublePresoak)` presoak, `(HighPressure)` the arms' HP jets,
+  `(TripleFoam)` foam bars plus the gantry's `T1` / `T2` foam cannons,
+  `(SingleRinse)` second high-pressure pass, `(RainOff)` clear coat,
+  `Lava Wax Arch` hot wax, `(RainBar)` spot-free rinse. `KWS Dyna Arch (Mapping)` at
+  the entrance is decoration. The arches have no scripts: `WashController` turns each
+  one's jets, rope light and `Speaker` sounds (`Start` / `Loop` / `Stop`) on as the
+  car's nose reaches it and off once the tail clears it. `PROGRAMS` in
+  `WashController` picks the arches per wash: Small runs presoak, both HP passes,
+  foam and spot free; Middle adds clear coat; Full adds hot wax.
+  Arch sounds use IDs this game can play: the spray loop is `ssss` (10487832846, the
+  same hiss as the brushes) pitched per arch, and the start is the wrap-arounds' `Air`
+  burst (1115758787). The foam arch keeps its own start/stop, and the lava arch keeps
+  its own three sounds. The old gantry's sound IDs fail with "Requester does not have
+  permission".
+- `KWS Storm Dryer 1` and `2`, `DuraBlasters` and `Heaxgonsystem` used to sit loose
+  in Workspace.
 - `Lights` holds the 16 ceiling lights. `Building` holds the walls, roof and grading.
 - `Selections_Old` is the old kiosk. Its scripts expect parts that this wash doesn't
   have.

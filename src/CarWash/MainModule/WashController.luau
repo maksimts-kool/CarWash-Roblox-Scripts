@@ -1,14 +1,11 @@
 -- Runs every machine in the wash line from one timeline, so the conveyor,
--- brushes, gantry, dryers, displays and exit gate always agree.
+-- brushes, arches, dryers, displays and exit gate always agree.
 local RunService = game:GetService("RunService")
 
 local WashController = {}
 
 local CarWash = script.Parent.Parent
-local Machine = CarWash.Machine
-local Motor = Machine.Motor
-local Sounds = Machine.Sounds
-local Arms = { CarWash.Arm, CarWash.Arm2 }
+local New = CarWash.New
 local Wraps = CarWash.WrapArounds.Brushes
 local Rockers = CarWash.RockerBrushes
 local Blasters = CarWash.DuraBlasters
@@ -35,8 +32,16 @@ local ARRIVAL_TIMEOUT = 45 -- how long a paid customer gets to reach the conveyo
 local DRY_SECONDS = 60
 local DEFAULT_CAR_LENGTH = 14
 local EXIT_GATE_OPEN_SECONDS = 5
-local SWEEP_ANGLE = 20
-local SWEEP_PERIOD = 1.5
+local ARCH_LEAD = 1.5 -- an arch starts when the car's nose is this far before it
+local ARCH_TRAIL = 1.5 -- and stops once the car's tail is this far past it
+local ROPE_COLORS = {
+	Color3.fromRGB(255, 0, 0),
+	Color3.fromRGB(255, 255, 0),
+	Color3.fromRGB(0, 255, 0),
+	Color3.fromRGB(33, 84, 185),
+	Color3.fromRGB(255, 0, 191),
+	Color3.fromRGB(170, 85, 0),
+}
 
 -- Halfway between the left wheel track and the right belt.
 local LANE_X = (CarWash.ConveyorPart.Conveyor4.Position.X + CarWash.ConveyorPart.Conveyor3.Position.X) / 2
@@ -46,7 +51,6 @@ local WRAP_Z = Wraps.BrushOne.MotorAnchor.Position.Z
 local ROCKER_START_Z = Rockers.Sensor.Position.Z
 local ROCKER_END_Z = ROCKER_START_Z - 9
 local BLASTER_END_Z = Blasters.Eye.Position.Z - 2
-local WASH_STOP_Z = CarWash.PositioningSystem.Stop.Position.Z
 local EXIT_SENSOR_Z = CarWash.GateEX.CloseSensor.Position.Z
 
 local DRYER_START_Z = -math.huge
@@ -57,70 +61,120 @@ for _, dryer in Dryers do
 end
 local DRY_CENTER_Z = dryerCenterSum / #Dryers
 
--- Each gantry move stops on its limit sensor and is then padded to `travel`
--- seconds, which keeps the whole program on a fixed clock.
-local LIMITS = {
-	Back = { sensor = CarWash.BackLimit, flag = Motor.ToBack, travel = 9 },
-	VeryBack = { sensor = CarWash.VeryBackLimit, flag = Motor.ToBack, travel = 13 },
-	Middle = { sensor = CarWash.MiddleLimit, flag = Motor.ToFront, travel = 5 },
-	Front = { sensor = CarWash.FrontLimit, flag = Motor.ToFront, travel = 9 },
-}
+local function emittersIn(root, name)
+	local list = {}
+	for _, item in root:GetDescendants() do
+		if item:IsA("ParticleEmitter") and item.Name == name then
+			table.insert(list, item)
+		end
+	end
+	return list
+end
 
-local function setArms(flag, on)
-	for _, arm in Arms do
-		arm[flag].Value = on
+local function setEmitters(list, on)
+	for _, emitter in list do
+		emitter.Enabled = on
 	end
 end
 
-local function trigger(sequenceScript)
-	sequenceScript.Disabled = false
+-- Arches in CarWash.New, in the order the car meets them. Each one has its
+-- jets, a rope light that cycles colours while it runs, and a Speaker part with
+-- Start / Loop / Stop sounds.
+local ArchOrder = {}
+
+local function later(arch, seconds, callback)
+	local myRun = arch.run
+	task.delay(seconds, function()
+		if arch.run == myRun then
+			callback()
+		end
+	end)
 end
 
-local FULL_PASS = { "Back", "Front" }
+local function defineArch(key, modelName, setup)
+	local model = New[modelName]
+	local arch = {
+		key = key,
+		model = model,
+		z = model.Frame:GetBoundingBox().Position.Z,
+		rope = model:FindFirstChild("Rope", true),
+		speaker = model:FindFirstChild("Speaker"),
+		run = 0,
+		active = false,
+	}
+	if type(setup) == "string" then
+		local jets = emittersIn(model, setup)
+		arch.start = function() setEmitters(jets, true) end
+		arch.stop = function() setEmitters(jets, false) end
+	else
+		setup(arch, model)
+	end
+	table.insert(ArchOrder, arch)
+end
 
-local STAGES = {
-	Presoak = {
-		path = FULL_PASS, soak = 20, sweep = true,
-		start = function() setArms("Soap", true) trigger(Sounds.PresoakStart) end,
-		stop = function() setArms("Soap", false) trigger(Sounds.PresoakStop) end,
-	},
-	HighPressure = {
-		path = FULL_PASS, sweep = true,
-		start = function() setArms("Wash", true) trigger(Sounds.HPStart) end,
-		stop = function() setArms("Wash", false) trigger(Sounds.HPStop) end,
-	},
-	Foam = {
-		path = FULL_PASS, soak = 18,
-		start = function() trigger(Machine.FoamStart) end,
-		stop = function() trigger(Machine.FoamStop) end,
-	},
-	ClearCoat = {
-		path = FULL_PASS, soak = 7, sweep = true,
-		start = function() setArms("Soap", true) setArms("Rinse", true) trigger(Sounds.ClearStart) end,
-		stop = function() setArms("Soap", false) setArms("Rinse", false) trigger(Sounds.ClearStop) end,
-	},
-	HotWax = {
-		path = { "VeryBack", "Middle", "Front" }, soak = 19,
-		start = function() Machine.HotWax.Value.Value = true end,
-		stop = function() Machine.HotWax.Value.Value = false end,
-	},
-	SpotFree = {
-		path = FULL_PASS, sweep = true,
-		start = function() setArms("Rinse", true) trigger(Sounds.SpotStart) end,
-		stop = function() setArms("Rinse", false) trigger(Sounds.SpotStop) end,
-	},
-}
+-- The old gantry's stages, one arch each: presoak, high pressure, triple foam
+-- (its T1 / T2 foam cannons are mounted on the foam arch), a second high-pressure
+-- pass, clear coat, hot wax and spot-free rinse.
+defineArch("Presoak", "KWS Dyna Arch (DoublePresoak)", "Presoak")
+defineArch("HighPressure", "KWS Dyna Arch (HighPressure)", function(arch, model)
+	local starter, jets = emittersIn(model, "HPStart"), emittersIn(model, "HP")
+	arch.start = function()
+		setEmitters(starter, true)
+		later(arch, 1, function()
+			setEmitters(starter, false)
+			setEmitters(jets, true)
+		end)
+	end
+	arch.stop = function()
+		setEmitters(starter, false)
+		setEmitters(jets, false)
+	end
+end)
+defineArch("Foam", "KWS Dyna Arch (TripleFoam)", "Foam")
+defineArch("Rinse", "KWS Dyna Arch (SingleRinse)", function(arch, model)
+	local burst, rinse = emittersIn(model, "Rinse2"), emittersIn(model, "Rinse")
+	arch.start = function()
+		setEmitters(burst, true)
+		later(arch, 0.6, function()
+			setEmitters(burst, false)
+			setEmitters(rinse, true)
+		end)
+	end
+	arch.stop = function()
+		setEmitters(burst, false)
+		setEmitters(rinse, false)
+	end
+end)
+defineArch("ClearCoat", "KWS Dyna Arch (RainOff)", "Sealent")
+defineArch("HotWax", "Lava Wax Arch", function(arch, model)
+	local lava = model.Lava
+	arch.start = function()
+		lava.LED.PointLight.Enabled = true
+		later(arch, 1, function() lava.RainBar.Wax2.Enabled = true end)
+		later(arch, 1.7, function() lava.RainBar.Wax.Enabled = true end)
+	end
+	arch.stop = function()
+		lava.LED.PointLight.Enabled = false
+		lava.RainBar.Wax2.Enabled = false
+		lava.RainBar.Wax.Enabled = false
+	end
+end)
+defineArch("SpotFree", "KWS Dyna Arch (RainBar)", "Water")
 
--- These add up to the 128 / 153 / 199 seconds the Wash Time display was built for.
+-- Which arches each program runs, the same stages the gantry ran for each one.
+-- Brushes, blasters and dryers run for every car.
+local BASIC = { Presoak = true, HighPressure = true, Foam = true, Rinse = true, SpotFree = true }
 local PROGRAMS = {
-	Small = { "Presoak", "HighPressure", "Foam", "HighPressure", "SpotFree" },
-	Middle = { "Presoak", "HighPressure", "Foam", "HighPressure", "ClearCoat", "SpotFree" },
-	Full = { "Presoak", "HighPressure", "Foam", "HighPressure", "ClearCoat", "HotWax", "SpotFree" },
+	Small = BASIC,
+	Middle = table.clone(BASIC),
+	Full = table.clone(BASIC),
 }
+PROGRAMS.Middle.ClearCoat = true
+PROGRAMS.Full.ClearCoat = true
+PROGRAMS.Full.HotWax = true
 
 local car = {}
 local runId = 0
-local sweepRun = 0
 local dryersRunning = false
 
 local function sleepUntil(moment)
@@ -140,6 +194,85 @@ local function startCountdown(display, format, seconds)
 		end
 	end)
 	return endsAt
+end
+
+local function setRope(arch, on)
+	local rope = arch.rope
+	if not rope then
+		return
+	end
+	local light = rope:FindFirstChildWhichIsA("PointLight")
+	if on then
+		local myRun = arch.run
+		rope.Material = Enum.Material.Neon
+		rope.Transparency = 0
+		if light then
+			light.Enabled = true
+		end
+		task.spawn(function()
+			local index = 0
+			while arch.run == myRun do
+				index = index % #ROPE_COLORS + 1
+				rope.Color = ROPE_COLORS[index]
+				if light then
+					light.Color = ROPE_COLORS[index]
+				end
+				task.wait(0.5)
+			end
+		end)
+	else
+		rope.Material = Enum.Material.SmoothPlastic
+		rope.Transparency = 0.5
+		rope.BrickColor = BrickColor.new("Medium stone grey")
+		if light then
+			light.Enabled = false
+		end
+	end
+end
+
+local function setArchSound(arch, on)
+	local speaker = arch.speaker
+	if not speaker then
+		return
+	end
+	local start, loop, stop = speaker:FindFirstChild("Start"), speaker:FindFirstChild("Loop"), speaker:FindFirstChild("Stop")
+	if on then
+		local introSeconds = 0
+		if start then
+			start:Play()
+			introSeconds = if start.IsLoaded then math.min(start.TimeLength - 0.1, 6) else 2
+		end
+		if loop then
+			later(arch, math.max(introSeconds, 0), function() loop:Play() end)
+		end
+	else
+		if start then
+			start:Stop()
+		end
+		if loop then
+			loop:Stop()
+		end
+		if stop then
+			stop:Play()
+		end
+	end
+end
+
+local function setArch(arch, on, force)
+	if arch.active == on and not force then
+		return
+	end
+	arch.active = on
+	arch.run += 1
+	if on then
+		arch.start()
+	else
+		arch.stop()
+	end
+	setRope(arch, on)
+	if not force then
+		setArchSound(arch, on)
+	end
 end
 
 local function setBelts(speed)
@@ -220,47 +353,6 @@ local function stopDryers()
 		dryer.Stop.Disabled = false
 		dryer.Stop2.Disabled = false
 	end
-end
-
-local function startSweep()
-	sweepRun += 1
-	local myRun = sweepRun
-	task.spawn(function()
-		local side = 1
-		while myRun == sweepRun do
-			Arms[1].Motor.HingeConstraint.TargetAngle = SWEEP_ANGLE * side
-			Arms[2].Motor.HingeConstraint.TargetAngle = -SWEEP_ANGLE * side
-			side = -side
-			task.wait(SWEEP_PERIOD)
-		end
-	end)
-end
-
-local function stopSweep()
-	sweepRun += 1
-	for _, arm in Arms do
-		arm.Motor.HingeConstraint.TargetAngle = 0
-	end
-end
-
-local function moveGantry(limitName, finishBy)
-	local limit = LIMITS[limitName]
-	limit.sensor.Script.Disabled = false
-	limit.flag.Value = true
-	while limit.flag.Value and os.clock() < finishBy do
-		task.wait(0.05)
-	end
-	limit.flag.Value = false
-	limit.sensor.Script.Disabled = true
-	sleepUntil(finishBy)
-end
-
-local function stageSeconds(stage)
-	local total = stage.soak or 0
-	for _, limitName in stage.path do
-		total += LIMITS[limitName].travel
-	end
-	return total
 end
 
 local function hasCar()
@@ -396,16 +488,20 @@ local function setCarVelocity(speed)
 end
 
 -- Moves the car until its front reaches targetZ. Each trigger fires once, the
--- moment the car reaches that point, and anything still unfired fires at the end.
+-- moment the car reaches that point, and anything still unfired fires at the
+-- end, in the order the triggers were listed.
 local function moveCarTo(targetZ, triggers)
 	setBelts(CONVEYOR_SPEED)
 	local deadline = os.clock() + math.max(carFront() - targetZ, 0) / CONVEYOR_SPEED + 15
 	local pending = table.clone(triggers or {})
 
 	local function checkTriggers()
-		for index = #pending, 1, -1 do
+		local index = 1
+		while index <= #pending do
 			if pending[index].ready() then
 				table.remove(pending, index).run()
+			else
+				index += 1
 			end
 		end
 	end
@@ -424,8 +520,8 @@ local function moveCarTo(targetZ, triggers)
 
 	setCarVelocity(0)
 	setBelts(0)
-	for index = #pending, 1, -1 do
-		table.remove(pending, index).run()
+	while #pending > 0 do
+		table.remove(pending, 1).run()
 	end
 end
 
@@ -441,10 +537,29 @@ local function rearPasses(z)
 	end
 end
 
-local function runTunnel()
-	setBlasters(true)
-	setWraps(true)
-	moveCarTo(WASH_STOP_Z, {
+-- Wash Time shows how long until the car's tail clears the last arch it uses.
+local function startWashCountdown(washEndZ)
+	local myRun = runId
+	task.spawn(function()
+		while myRun == runId do
+			local remaining = math.ceil((carRear() - washEndZ) / CONVEYOR_SPEED)
+			if remaining <= 0 then
+				break
+			end
+			WashDisplay.Value = ("%03d"):format(remaining)
+			task.wait(0.1)
+		end
+		if myRun == runId then
+			WashDisplay.Value = "---"
+		end
+	end)
+end
+
+-- One continuous pull from the pickup point to the dryers: blasters, wrap-arounds,
+-- rockers, then every arch in the program, each switching on as the car's nose
+-- reaches it and off once the tail has passed.
+local function runTunnel(program)
+	local triggers = {
 		{ ready = rearPasses(BLASTER_END_Z), run = function() setBlasters(false) end },
 		{ ready = frontReaches(WRAP_Z + 5), run = function()
 			Wraps.Air2:Play()
@@ -458,39 +573,28 @@ local function runTunnel()
 		{ ready = rearPasses(WRAP_Z - 12), run = function() setWraps(false) end },
 		{ ready = frontReaches(ROCKER_START_Z), run = function() setRockers(true) end },
 		{ ready = rearPasses(ROCKER_END_Z), run = function() setRockers(false) end },
-	})
-end
+	}
 
-local function runProgram(program)
-	local total = 0
-	for _, name in program do
-		total += stageSeconds(STAGES[name])
+	local washEndZ = ROCKER_END_Z
+	for _, arch in ArchOrder do
+		if program[arch.key] then
+			table.insert(triggers, { ready = frontReaches(arch.z + ARCH_LEAD), run = function() setArch(arch, true) end })
+			table.insert(triggers, { ready = rearPasses(arch.z - ARCH_TRAIL), run = function() setArch(arch, false) end })
+			washEndZ = math.min(washEndZ, arch.z - ARCH_TRAIL)
+		end
 	end
-	startCountdown(WashDisplay, "%03d", total)
+	table.insert(triggers, { ready = frontReaches(DRYER_START_Z), run = startDryers })
 
-	local clock = os.clock()
-	for _, name in program do
-		local stage = STAGES[name]
-		stage.start()
-		if stage.sweep then
-			startSweep()
-		end
-		for _, limitName in stage.path do
-			clock += LIMITS[limitName].travel
-			moveGantry(limitName, clock)
-		end
-		stopSweep()
-		stage.stop()
-		clock += stage.soak or 0
-		sleepUntil(clock)
-	end
-	WashDisplay.Value = "---"
+	startWashCountdown(washEndZ)
+	setBlasters(true)
+	setWraps(true)
+	moveCarTo(DRY_CENTER_Z - car.length / 2, triggers)
 end
 
 local function runDryers()
-	moveCarTo(DRY_CENTER_Z - car.length / 2, {
-		{ ready = frontReaches(DRYER_START_Z), run = startDryers },
-	})
+	if not dryersRunning then
+		startDryers()
+	end
 	sleepUntil(startCountdown(DryDisplay, "%02d", DRY_SECONDS))
 	DryDisplay.Value = "--"
 	stopDryers()
@@ -515,8 +619,7 @@ function WashController:Run(washType, entryHit)
 
 	waitForCar()
 	grabCar()
-	runTunnel()
-	runProgram(program)
+	runTunnel(program)
 	runDryers()
 	releaseCar()
 end
@@ -524,18 +627,16 @@ end
 -- Puts every machine back to idle.
 function WashController:Reset()
 	runId += 1
-	stopSweep()
-	Motor.ToBack.Value = false
-	Motor.ToFront.Value = false
-	for _, limit in LIMITS do
-		limit.sensor.Script.Disabled = true
+	for _, arch in ArchOrder do
+		setArch(arch, false, true)
+		if arch.speaker then
+			for _, sound in arch.speaker:GetChildren() do
+				if sound:IsA("Sound") then
+					sound:Stop()
+				end
+			end
+		end
 	end
-	for _, flag in { "Wash", "Soap", "Rinse" } do
-		setArms(flag, false)
-	end
-	Machine.T1.On.Value = false
-	Machine.T2.On.Value = false
-	Machine.HotWax.Value.Value = false
 	setWraps(false)
 	setRockers(false)
 	setBlasters(false)

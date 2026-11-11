@@ -1,9 +1,0 @@
-script.Parent.manifold1.Presoak.Enabled = false
-script.Parent.manifold2.Presoak.Enabled = false
-script.Parent.manifold3.Presoak.Enabled = false
-script.Parent.manifold4.Presoak.Enabled = false
-script.Parent.manifold5.Presoak.Enabled = false
-script.Parent.manifold6.Presoak.Enabled = false
-script.Parent.manifold7.Presoak.Enabled = false
-script.Parent.manifold8.Presoak.Enabled = false
-script.Disabled = true
