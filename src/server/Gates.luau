@@ -1,10 +1,12 @@
--- The entry gate (GateEN) and exit gate (GateEX) barrier arms.
+-- The entry gate (GateEN) and exit gate (GateEX) barrier arms, each swung by
+-- the joint that replaced its hinge (see Joints).
 
 local Config = require(script.Parent.Config)
+local Joints = require(script.Parent.Joints)
 
 local CarWash = workspace:WaitForChild("CarWash")
-local EntryHinge = CarWash.GateEN.Frame.MotorSupport.HingeConstraint
-local ExitHinge = CarWash.GateEX.Frame.MotorSupport.HingeConstraint
+local EntryJoint = Joints.get(CarWash.GateEN.Frame.MotorSupport)
+local ExitJoint = Joints.get(CarWash.GateEX.Frame.MotorSupport)
 
 local Gates = {}
 
@@ -18,11 +20,11 @@ local function angle(open: boolean): number
 end
 
 function Gates.setEntry(open: boolean)
-	EntryHinge.TargetAngle = angle(open)
+	Joints.servo(EntryJoint, angle(open))
 end
 
 function Gates.setExit(open: boolean)
-	ExitHinge.TargetAngle = angle(open)
+	Joints.servo(ExitJoint, angle(open))
 end
 
 return Gates

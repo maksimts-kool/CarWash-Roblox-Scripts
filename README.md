@@ -33,7 +33,8 @@ Server (`src/server`), started by `init.server.luau` in this order:
 | Module | Does |
 |---|---|
 | `Config` | Every tunable number: wash programs (name, price, arch speed, which arches), conveyor speeds, timings, cash, gate angles |
-| `Welds` | Welds the moving machine parts (gate arms, brushes, blaster spinners, dryer fans) into rigid assemblies at startup. They're saved unanchored and unwelded. |
+| `Joints` | Runs first. Replaces the machines' physics with scripted joints: welds each moving part into a rigid assembly (`Welds`), turns every `HingeConstraint` into a `Motor6D` (named `Joint`, or the hinge's own name like the blasters' `Move`), gives each dryer `FanMotor` a `Joint` instead of its surface motor, removes every other constraint / body mover and anchors anything left loose. Moving parts stop colliding, except the gate arms. `Joints.servo(joint, angle, speed?)` / `Joints.spin(joint, speed)` set the joint's attributes (degrees, degrees/s; the old hinge angles still apply) |
+| `Welds` | Welds a model into one rigid assembly; used by `Joints` for the gate arms, brushes, blaster spinners and dryer fans, which are saved unanchored and unwelded |
 | `Cash` | leaderstats `Cash`: start with 15, +10 every 120 s. `Cash.charge(player, price)` |
 | `WashLine` | The customer flow: kiosk payment → entry gate opens when the wash is free → car drives in → wash runs. Also sets the entrance `ProgressScreen` (Select / Good / Occupied). |
 | `Kiosk` | The pay terminal (`Selections`): menu, confirm, tap a "Debit Card" on the EFT reader. Fills the screen's texts from `Config` and sets the payment `State` |
@@ -44,12 +45,13 @@ Server (`src/server`), started by `init.server.luau` in this order:
 | `Wash/Arches` | The seven arches in `New`: jets, sounds, `LightMode` / `LightSince` |
 | `Wash/Brushes` | Wrap-around and rocker brushes |
 | `Wash/Blasters` | DuraBlaster wheel blasters, and the `Eye` that swings their arms in |
-| `Wash/Dryers` | The KWS Storm Dryers, with the hum winding down on stop |
+| `Wash/Dryers` | The KWS Storm Dryers. Each starts only when the car's nose is right under its first `AirOutlet` (`Config.DryerLead`), one at a time (`Config.DryerStagger` apart): Startup sound (cut after `DryerStartupSeconds`), then the hum; on stop the hum fades under the Stop sound. Volume and hearing distance are in `Config` |
 | `Wash/Screens` | Attributes for the Wash Time / Dry Time screens |
 
 Client (`src/client`), one LocalScript each, all driven by attributes the server sets
 and by server time, so every player sees the same thing with no remotes:
-`LightShow` (ceiling lights and wall hexagons), `ArchLights` (arch LEDs),
+`Joints` (moves the gate arms, brushes, blaster arms and spinners, dryer fans
+by setting each joint's `Transform`, with smooth easing), `LightShow` (ceiling lights and wall hexagons), `ArchLights` (arch LEDs),
 `TimerScreens` (Wash Time / Dry Time screens), `ProgressScreen` (entrance screen
 animations), `KioskScreen` (pay terminal screen animations).
 
@@ -126,9 +128,11 @@ and reconnect.
   6980329506).
 - `sounds/` holds generated replacements, one `<arch>_start/loop/stop.ogg` set for
   presoak, highpressure (also used by SingleRinse), foam, clearcoat and spotfree.
+  `dryer_stop.ogg` is the dryers' spin-down (uploaded as 101218008415689, set in
+  `Config.DryerStopSoundId`).
   `sounds/generate.py` makes them from scratch (needs `numpy`, `scipy` and `ffmpeg`);
   loops are seamless and starts end at loop level. Run
-  `python sounds/generate.py [arch ...]` to re-render.
+  `python sounds/generate.py [arch ... | dryer]` to re-render.
 - `KWS Storm Dryer 1` and `2`, `DuraBlasters` and `Heaxgonsystem` used to sit loose
   in Workspace.
 - Machine particles: `DuraBlasters` nozzles use the same jet / mist / droplet set as

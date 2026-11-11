@@ -346,8 +346,48 @@ ARCHES = {
 }
 
 
+# ---------------------------------------------------------------- the dryers
+
+def dryer_stop():
+    """KWS Storm Dryer switching off: a contactor clunk, then the blower spins
+    down: the air roar dies away and darkens while the fan's blade tone and the
+    motor whine sweep down. About 3 s, so it doesn't drag on."""
+    n = seconds(3.0)
+    t = timeline(n)
+    spin = np.exp(-t / 0.8)  # fan speed, 1 -> ~0.02 by the end
+
+    bright = band(noise(n), 900, 7000) * spin**2.2 * 0.55
+    body = band(noise(n), 120, 900) * spin**1.2 * 0.8
+    low = band(noise(n), 40, 160) * spin**0.8 * 0.35
+    air = (bright + body + low) * wobble(n, 4, 0.1)
+
+    blade = (tone(210 * spin + 14, n) * 0.16 + tone(420 * spin + 28, n) * 0.06) * spin
+    whine = (tone(1150 * spin + 50, n) + 0.3 * tone(2300 * spin + 100, n)) * 0.045 * spin**1.4
+
+    out = (air + blade + whine) * ramp(n, 1, 0, 2.3, 0.7)
+    return out + thump(n, 0.0, 85, 0.05, 0.45)
+
+
+# One-off sounds (no loop): named `<file stem>: build`. Each is levelled so its
+# first half second sits at the loop loudness, i.e. it starts where the running
+# machine's hum is.
+ONE_SHOTS = {
+    "dryer_stop": dryer_stop,
+}
+
+
 def main() -> int:
     only = set(sys.argv[1:])
+    for name, build in ONE_SHOTS.items():
+        if only and name not in only and name.split("_")[0] not in only:
+            continue
+        x = build()
+        gain = 10 ** ((LOOP_RMS_DB - rms_db(x[:seconds(0.5)])) / 20)
+        x = fade_edges(limit(x * gain), fade_out=0.1)
+        path = OUT_DIR / f"{name}.ogg"
+        write_ogg(path, x)
+        print(f"{path.name:28s} {len(x) / SR:5.2f}s  rms {rms_db(x):6.1f} dB  peak {20 * np.log10(np.max(np.abs(x))):5.1f} dB")
+
     for name, build in ARCHES.items():
         if only and name not in only:
             continue

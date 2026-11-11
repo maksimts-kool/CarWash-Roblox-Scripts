@@ -1,9 +1,10 @@
 -- Welds the moving machine parts into rigid assemblies when the server starts.
 --
--- These models are saved unanchored and unwelded (the hinges that drive them
--- need them free). Each one is welded to its PrimaryPart, or its first part,
--- and unanchored. This replaces the qPerfectionWeld / Weld script copies that
--- used to sit inside each model.
+-- These models are saved unanchored and unwelded (they used to hang on
+-- hinges). Each one is welded to its PrimaryPart, or its first part, and
+-- unanchored; Joints then hangs it off its frame with a scripted joint. This
+-- replaces the qPerfectionWeld / Weld script copies that used to sit inside
+-- each model.
 
 local CarWash = workspace:WaitForChild("CarWash")
 

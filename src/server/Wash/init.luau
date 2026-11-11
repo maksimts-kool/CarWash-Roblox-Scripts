@@ -205,7 +205,10 @@ local function runTunnel(program)
 			zone.archEndZ = math.min(zone.archEndZ, endZ)
 		end
 	end
-	table.insert(triggers, { ready = front(Dryers.START_Z), run = Dryers.start })
+	-- each dryer starts as the car's nose gets right under it, one at a time
+	for index, z in Dryers.startZs do
+		table.insert(triggers, { ready = front(z), run = function() Dryers.startUnit(index) end })
+	end
 
 	startCountdown(zone)
 	Blasters.set(true)
@@ -216,9 +219,8 @@ local function runTunnel(program)
 end
 
 local function runDryers()
-	if not Dryers.isRunning() then
-		Dryers.start()
-	end
+	-- any dryer the car's nose didn't reach starts now, still one at a time
+	Dryers.startAll()
 	Screens.set(Screens.Dry, "Running", {
 		EndsAt = now() + Config.DrySeconds,
 		Total = Config.DrySeconds,

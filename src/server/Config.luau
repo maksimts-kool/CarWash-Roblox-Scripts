@@ -59,7 +59,19 @@ Config.DefaultCarLength = 14
 Config.ArchLead = 1.5 -- an arch starts when the car's nose is this far before it
 Config.ArchTrail = 1.5 -- and stops once the car's tail is this far past it
 
--- Gates (HingeConstraint target angles).
+-- Dryers. Each one starts when the car's nose is right under its first air
+-- outlet, one after the other, never two at once.
+Config.DryerLead = 1 -- studs before the dryer's first outlet the nose has to be
+Config.DryerStagger = 1.5 -- seconds between one dryer starting (or stopping) and the next
+Config.DryerVolume = 0.8 -- multiplier on the dryer sounds' volume as saved in the place
+Config.DryerHearDistance = 70 -- studs; the dryers fade to silence by here
+Config.DryerStartupSeconds = 2.5 -- the startup sound is cut short (faded out) after this
+Config.DryerStopSeconds = 1.2 -- the hum fades out over this while the stop sound plays
+-- The uploaded sounds/dryer_stop.ogg. Set to "" to use a Sound named "Stop" saved
+-- in the dryer instead (if there is one).
+Config.DryerStopSoundId = "rbxassetid://101218008415689"
+
+-- Gates (target angles, in degrees, of the arm's joint).
 Config.GateOpenAngle = -80
 Config.GateClosedAngle = 0
 Config.EntryGateSettleSeconds = 2 -- after opening, before the car may trigger the wash
