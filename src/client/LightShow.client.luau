@@ -19,6 +19,10 @@
 --   CarFront        Z of the car's nose (the car travels toward the exit)
 --   CarLength       studs
 -- Everything else is a function of server time, so all players see the same show.
+--
+-- The operator can override each group from the ControlPanel, with CarWash
+-- attributes LightsCeiling / LightsHexagons = "Auto" (the show above), "On"
+-- (steady full light) or "Off". The emergency stop (Stopped) beats both.
 -- Runs on the client, so it costs no network traffic.
 
 local RunService = game:GetService("RunService")
@@ -52,6 +56,7 @@ local HEX_TUNNEL = rgb(120, 190, 255) -- the car is between arches (blasters, br
 local HEX_AIR = rgb(215, 240, 255)
 local HEX_EXIT = rgb(40, 230, 90)
 local HEX_ALARM = rgb(255, 30, 30)
+local HEX_STEADY = rgb(110, 63, 161) -- "On": halfway between the idle wave's colours
 local WHITE = rgb(255, 255, 255)
 
 -- Distance into the tunnel along the car's path, so "ahead" is always +s.
@@ -354,8 +359,18 @@ RunService.RenderStepped:Connect(function(deltaTime)
 	updateCar(deltaTime)
 	local stageColor = if car then stageColorNear(car.center) else HEX_TUNNEL
 
+	local ceilingMode = if phase == "Stopped" then "Auto" else CarWash:GetAttribute("LightsCeiling") or "Auto"
+	local hexMode = if phase == "Stopped" then "Auto" else CarWash:GetAttribute("LightsHexagons") or "Auto"
+
 	for _, row in ceilingRows do
-		local level, color, snap = ceilingTarget(row, phase, age, car, stageColor)
+		local level, color, snap
+		if ceilingMode == "On" then
+			level, color, snap = 1, CEILING_WHITE, false
+		elseif ceilingMode == "Off" then
+			level, color, snap = 0, CEILING_WHITE, false
+		else
+			level, color, snap = ceilingTarget(row, phase, age, car, stageColor)
+		end
 		if level then
 			if snap then
 				row.level, row.color = level, color
@@ -368,7 +383,14 @@ RunService.RenderStepped:Connect(function(deltaTime)
 	end
 
 	for _, hex in hexes do
-		local level, color = hexTarget(hex, phase, age, now, car, stageColor)
+		local level, color
+		if hexMode == "On" then
+			level, color = 1, HEX_STEADY
+		elseif hexMode == "Off" then
+			level, color = 0, hex.color
+		else
+			level, color = hexTarget(hex, phase, age, now, car, stageColor)
+		end
 		if level then
 			hex.level = ease(hex.level, level, FADE_RATE, deltaTime)
 			hex.color = hex.color:Lerp(color, 1 - math.exp(-FADE_RATE * deltaTime))

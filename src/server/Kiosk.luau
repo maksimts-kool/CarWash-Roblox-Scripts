@@ -308,11 +308,6 @@ local function connectReader()
 	end)
 end
 
--- Rewrites the menu cards from Config (after the ControlPanel changes a price).
-function Kiosk.refreshMenu()
-	fillMenu()
-end
-
 -- Back to the wash menu, ready for the next customer.
 function Kiosk.reset()
 	showPage("Select")

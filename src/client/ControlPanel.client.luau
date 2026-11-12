@@ -7,11 +7,12 @@
 --   Root.Tunnel        the car position Bar (+ MarkLabels), WashLeft / Stage / DryLeft
 --   Root.Machines      Lamps: one per machine, named by its key
 --   Root.Tabs / Pages  Manual (Toggles, gate and line buttons), Washes (Cards,
---                      one per program), Settings (Rows, one per setting),
+--                      one per program), Lights (Rows Ceiling / Hexagons /
+--                      Arches, each with Modes buttons Auto / On / Off),
 --                      Stats (Tiles, Counts, Log)
 --   Root.Message       command results; Root.Lock  the screen non-operators see
---   Templates          Lamp, Toggle, ProgramCard, SettingRow, LogRow, Tick,
---                      MarkLabel: copied for anything the saved GUI has no row for
+--   Templates          Lamp, Toggle, ProgramCard, LogRow, Tick, MarkLabel:
+--                      copied for anything the saved GUI has no row for
 --
 -- The server (ServerScriptService.CarWash.ControlPanel) publishes everything on
 -- ReplicatedStorage.CarWashPanel's attributes and takes commands through
@@ -79,7 +80,7 @@ local Lamps = Root.Machines.Lamps
 local Pages = Root.Pages
 local Manual = Pages.Manual
 local Washes = Pages.Washes
-local Settings = Pages.Settings
+local LightsPage = Pages.Lights
 local Stats = Pages.Stats
 local Message = Root.Message
 local Lock = Root.Lock
@@ -254,26 +255,27 @@ local function buildPrograms()
 		local card = rowFor(Washes.Cards, "ProgramCard", program.key, index)
 		card.WashName.Text = program.name
 		card.Stages.Text = `{program.stages} stages`
+		card.Price.Text = `{State:GetAttribute("Currency") or ""}{formatNumber(program.price or 0)}`
 		onClick(card.Start, function()
 			send("FreeWash", program.key)
 		end)
 	end
 end
 
-type SettingRow = { key: string, unit: string, row: Frame }
-local settingRows: { SettingRow } = {}
-
-local function buildSettings()
-	for index, setting in decode("Settings") or {} do
-		local row = rowFor(Settings.Rows, "SettingRow", setting.key, index)
-		row.Label.Text = setting.label
-		onClick(row.Minus, function()
-			send("Adjust", setting.key, -1)
-		end)
-		onClick(row.Plus, function()
-			send("Adjust", setting.key, 1)
-		end)
-		table.insert(settingRows, { key = setting.key, unit = setting.unit, row = row })
+-- The light rows: each mode button sets that group's CarWash attribute
+-- ("Lights" .. group) through the server.
+local function buildLights()
+	for _, row in LightsPage.Rows:GetChildren() do
+		local modes = row:FindFirstChild("Modes")
+		if modes then
+			for _, modeButton in modes:GetChildren() do
+				if modeButton:IsA("TextButton") then
+					onClick(modeButton, function()
+						send("Lights", row.Name, modeButton.Name)
+					end)
+				end
+			end
+		end
 	end
 end
 
@@ -326,13 +328,17 @@ local function refresh()
 	Status.UIStroke.Color = if stopped then C.red else C.line
 	Status.BackgroundColor3 = if stopped then C.redTint else C.tile
 	local admitted = State:GetAttribute("Admitted")
+	local carInside = State:GetAttribute("CarInTunnel") == true
 	Status.Sub.Text = if line == "Admitted" and admitted then `{programNames[admitted] or admitted}: drive in`
-		elseif stopped then "Machines locked out"
+		elseif stopped and carInside then "Exit open: car driving out"
+		elseif stopped then "Tunnel clear: ready to reset"
 		else ""
 	Header.Phase.Text = `Phase: {CarWash:GetAttribute("WashPhase") or "Idle"}`
 	Header.Clock.Text = os.date("%H:%M:%S") :: string
-	EStopButton.Text = if stopped then "RESET E-STOP" else "EMERGENCY STOP"
+	-- after a stop the car drives out through the exit first, then it can be reset
+	EStopButton.Text = if stopped and carInside then "CAR DRIVING OUT" elseif stopped then "RESET E-STOP" else "EMERGENCY STOP"
 	EStopButton.BackgroundColor3 = if stopped then C.orange else C.red
+	EStopButton.BackgroundTransparency = if stopped and carInside then 0.45 else 0
 
 	-- tunnel
 	Tunnel.Program.Text = TimerWash:GetAttribute("Program") or ""
@@ -396,21 +402,24 @@ local function refresh()
 	for _, key in programKeys do
 		local card = Washes.Cards:FindFirstChild(key)
 		if card then
-			local price = State:GetAttribute("Set_Price_" .. key)
-			card.Price.Text = if type(price) == "number" then `{currency}{formatNumber(price)}` else ""
 			card.Count.Text = `{State:GetAttribute("Count_" .. key) or 0} washed`
 			card.Start.BackgroundTransparency = if idle then 0 else 0.5
 		end
 	end
 
-	-- settings
-	for _, setting in settingRows do
-		local value = State:GetAttribute("Set_" .. setting.key)
-		local text = "--"
-		if type(value) == "number" then
-			text = if setting.unit == currency then `{currency}{formatNumber(value)}` else `{formatNumber(value)} {setting.unit}`
+	-- lights
+	for _, row in LightsPage.Rows:GetChildren() do
+		local modes = row:FindFirstChild("Modes")
+		if modes then
+			local current = CarWash:GetAttribute("Lights" .. row.Name) or "Auto"
+			for _, modeButton in modes:GetChildren() do
+				if modeButton:IsA("TextButton") then
+					local on = modeButton.Name == current
+					modeButton.BackgroundColor3 = if on then C.blue else C.card
+					modeButton.TextColor3 = if on then C.white else C.ink
+				end
+			end
 		end
-		(setting.row :: any).Value.Text = text
 	end
 
 	-- stats
@@ -459,9 +468,6 @@ end)
 onClick(Manual.CancelAdmission, function()
 	send("CancelAdmission")
 end)
-onClick(Settings.RestoreDefaults, function()
-	send("ResetSettings")
-end)
 onClick(Stats.ResetStats, function()
 	send("ResetStats")
 end)
@@ -469,7 +475,7 @@ end)
 buildLane()
 buildMachines()
 buildPrograms()
-buildSettings()
+buildLights()
 rebuildLog()
 State:GetAttributeChangedSignal("Log"):Connect(rebuildLog)
 player:GetAttributeChangedSignal("CarWashOperator"):Connect(updateAccess)

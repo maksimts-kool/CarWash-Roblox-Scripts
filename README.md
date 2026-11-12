@@ -55,7 +55,7 @@ Server (`src/server`), started by `init.server.luau` in this order:
 | `Wash/Blasters` | Rotary wheel blasters (`RotaryWheelBlasters`): three spinning heads per side; the `Sensor` beam remembers where the car's wheels are, and the nozzles fire while a wheel is in front of the heads |
 | `Wash/Dryers` | The KWS Storm Dryers. Each starts only when the car's nose is right under its first `AirOutlet` (`Config.DryerLead`), one at a time (`Config.DryerStagger` apart): Startup sound (cut after `DryerStartupSeconds`), then the hum; on stop the hum fades under the Stop sound. Volume and hearing distance are in `Config` |
 | `Wash/Screens` | Attributes for the Wash Time / Dry Time screens |
-| `Wash/Stop` | The emergency stop flag. Every long wait in the wash timeline (conveyor moves, pickup, drying, exit gate) errors out while it is set, and `WashLine` holds the line until it is reset |
+| `Wash/Stop` | The emergency stop flag. Every long wait in the wash timeline (conveyor moves, pickup, drying, exit gate) errors out while it is set. On an emergency stop `WashLine` switches every machine off, lets go of the car, closes the entry gate and opens the exit so the driver can drive out. Only once the car is past the exit sensor (or gone) can an operator reset, which closes the exit and frees the line |
 | `ControlPanel` | The operator console on `CarWash.ControlBooth` (parts saved in the place, beside the entry gate: a `Screen`, an `EStop` mushroom button and a `Green` / `Amber` / `Red` stack light the script lights). It publishes machine, gate, conveyor, settings, stats and log state on `ReplicatedStorage.CarWashPanel` and takes commands through `CarWashRemotes.ControlPanel`. Only operators can use it: the place owner, `Config.ControlPanel.Admins`, and everyone in Studio |
 
 Client (`src/client`), one LocalScript each, all driven by attributes the server sets
@@ -63,14 +63,18 @@ and by server time, so every player sees the same thing with no remotes:
 `Joints` (moves the gate arms, brushes, wheel blaster heads, dryer fans
 by setting each joint's `Transform`, with smooth easing), `LightShow` (ceiling lights and wall hexagons), `ArchLights` (arch LEDs),
 `TimerScreens` (Wash Time / Dry Time screens), `ProgressScreen` (entrance screen
-animations), `KioskScreen` (pay terminal screen animations).
+animations), `KioskScreen` (pay terminal screen animations), `EmergencyScreens` (shows and
+animates the saved `Emergency` frame on the three tunnel screens and the entrance screen while
+the wash is stopped).
 `ControlPanel` fills in the operator console, the SurfaceGui `ControlBooth.Screen.Panel` saved
 in the place in the pay terminal's style (white cards, navy text, blue accents, Montserrat).
 Each client fills its own copy and sends button presses to the server, which checks
 who pressed them. It shows line status, the e-stop, the car's position in the tunnel, a lamp per machine and four
 tabs: Manual (machine tests while idle, gates, all off, cancel admission), Washes (free
-operator washes), Settings (live speeds, times, prices; reset on server restart) and
-Stats & Log. Non-operators see the `Lock` screen.
+operator washes), Lights (ceiling lights and wall hexagons Auto / On / Off, arch LEDs
+Auto / Off; set as `LightsCeiling` / `LightsHexagons` / `LightsArches` on `CarWash`, which
+`LightShow` and `ArchLights` follow, and the emergency stop overrides) and Stats & Log.
+Non-operators see the `Lock` screen.
 The booth and its GUI are ordinary instances: move or restyle them in Studio, keeping the
 names the script looks for (listed at the top of `client/ControlPanel.client.luau`).
 

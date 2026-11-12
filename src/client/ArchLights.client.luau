@@ -10,10 +10,14 @@
 --
 -- The look is deliberately calm: one colour per stage that breathes slowly,
 -- soft fades in and out, and a faint idle glow.
+--
+-- The operator can switch the LEDs off from the ControlPanel: CarWash attribute
+-- LightsArches = "Auto" (the show above) or "Off" (they fade out).
 
 local RunService = game:GetService("RunService")
 
-local New = workspace:WaitForChild("CarWash"):WaitForChild("New")
+local CarWash = workspace:WaitForChild("CarWash")
+local New = CarWash:WaitForChild("New")
 
 local CULL_DISTANCE = 250
 local FADE_IN_SECONDS = 0.8
@@ -25,10 +29,13 @@ local BREATH_DEPTH = 0.12 -- how much the level rises and falls while breathing
 local MAX_LIGHT_BRIGHTNESS = 0.9
 local MIN_TRANSPARENCY = 0.3 -- the rope never goes fully solid
 local TAU = math.pi * 2
+local POWER_RATE = 3 -- how quickly the LEDs fade when switched off or on (per second)
 
 local function rgb(r, g, b)
 	return Color3.fromRGB(r, g, b)
 end
+
+local OFF_COLOR = rgb(20, 22, 28) -- what a switched-off LED looks like
 
 -- Each stage: the colour it glows and, optionally, a second colour it drifts
 -- towards and back over DRIFT_SECONDS.
@@ -127,6 +134,8 @@ New.ChildAdded:Connect(function(child)
 	end
 end)
 
+local power = 1 -- 1 = lit as the show says, 0 = switched off
+
 local function render(arch, now)
 	local mode = arch.model:GetAttribute("LightMode") or "Idle"
 	local since = arch.model:GetAttribute("LightSince") or 0
@@ -146,6 +155,10 @@ local function render(arch, now)
 		color, level = fromColor:Lerp(color, k), fromLevel + (level - fromLevel) * k
 	end
 
+	-- switched off from the ControlPanel
+	level *= power
+	color = OFF_COLOR:Lerp(color, power)
+
 	arch.led.Color = color
 	-- 0.85 (faint) at nothing, down to MIN_TRANSPARENCY at full stage level
 	local glow = math.clamp(level / ACTIVE_LEVEL, 0, 1)
@@ -154,7 +167,9 @@ local function render(arch, now)
 	arch.light.Brightness = MAX_LIGHT_BRIGHTNESS * level / (ACTIVE_LEVEL + BREATH_DEPTH / 2)
 end
 
-RunService.RenderStepped:Connect(function()
+RunService.RenderStepped:Connect(function(deltaTime)
+	local target = if CarWash:GetAttribute("LightsArches") == "Off" then 0 else 1
+	power += (target - power) * (1 - math.exp(-POWER_RATE * deltaTime))
 	local now = workspace:GetServerTimeNow()
 	local camera = workspace.CurrentCamera
 	local cameraPosition = if camera then camera.CFrame.Position else Vector3.zero

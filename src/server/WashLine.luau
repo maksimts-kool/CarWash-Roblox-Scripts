@@ -72,12 +72,13 @@ local function runWash(program: string, entryHit: BasePart)
 		print(`CarWash: finished {program}`)
 		emit("WashFinished", program, os.clock() - started)
 	elseif Stop.isHalt(err) then
-		-- machines were switched off by emergencyStop; hold until the operator resets
+		-- emergencyStop switched the machines off and opened the exit; the driver
+		-- takes the car out, then an operator resets
 		print(`CarWash: {program} halted by the emergency stop`)
 		while Stop.active do
 			task.wait(0.1)
 		end
-		Wash.abort() -- lets the car out through the exit gate
+		Wash.setPhase("Finished")
 	else
 		warn(`CarWash: wash stopped early: {err}`)
 		emit("WashFailed", program, tostring(err))
@@ -167,8 +168,9 @@ function WashLine.cancelAdmission(): (boolean, string)
 	return true, "Admission cancelled, entry gate closing"
 end
 
--- Halts the conveyor and every machine where they are. The car stays put
--- (the conveyor lets go of it) and the gates stay as they are.
+-- Halts the conveyor and every machine at once and lets go of the car. The
+-- entry gate closes and the exit gate opens, so the driver can take the car
+-- out. The screens show the emergency (WashPhase "Stopped").
 function WashLine.emergencyStop(): (boolean, string)
 	if Stop.active then
 		return false, "Already stopped"
@@ -176,23 +178,33 @@ function WashLine.emergencyStop(): (boolean, string)
 	Stop.active = true
 	Wash.reset()
 	Wash.setPhase("Stopped")
+	Gates.setEntry(false)
+	Gates.setExit(true)
 	emit("EStop", washing)
-	return true, "EMERGENCY STOP"
+	return true, "EMERGENCY STOP: exit gate opening"
 end
 
--- Clears the emergency stop. A car that was being washed is let out through
--- the exit gate; the line then takes the next customer.
+-- Clears the emergency stop, once the car has driven out through the exit.
+-- The exit gate closes and the line takes the next customer (a customer who
+-- was let in but hadn't driven in yet gets the entry gate back).
 function WashLine.resetStop(): (boolean, string)
 	if not Stop.active then
 		return false, "Not stopped"
 	end
+	if Wash.carInTunnel() then
+		return false, "A car is still in the tunnel: let it drive out first"
+	end
 	Stop.active = false
+	Gates.setExit(false)
 	local wasWashing = washing
 	if not wasWashing then
 		Wash.setPhase(if admitted then "Ready" else "Idle")
+		if admitted then
+			Gates.setEntry(true)
+		end
 	end
 	emit("Released", wasWashing)
-	return true, if wasWashing then "Reset: exit gate opening for the car" else "Reset: line ready"
+	return true, "Reset: line ready"
 end
 
 function WashLine.start()

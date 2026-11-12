@@ -349,6 +349,13 @@ function Wash.run(programKey: string, entryHit: BasePart?)
 	Screens.idle()
 end
 
+-- Is the last car still in the tunnel, short of the exit? After an emergency
+-- stop the driver takes it out through the open exit gate before the wash can
+-- be reset. A car that has gone (its driver left) counts as out.
+function Wash.carInTunnel(): boolean
+	return Car.has() and Car.rear() > Gates.ExitSensor.Position.Z
+end
+
 -- Sets WashPhase directly (the ControlPanel's emergency stop and reset).
 Wash.setPhase = setPhase
 

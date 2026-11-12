@@ -12,9 +12,12 @@
 --   Line, Admitted             WashLine.state(): Idle / Admitted / Washing / Stopped
 --   M_<machine>                each machine on / off; DryersOn / DryersTotal
 --   Conveyor                   belt speed; EntryOpen / ExitOpen
---   Set_<setting>              the live settings (meta in Settings, JSON)
+--   CarInTunnel                a car still has to drive out before a reset
 --   Machines, Lane, Programs   what's there (JSON, set once)
 --   Stat_*, StartedAt, Log     stats and the event log (JSON)
+-- and the light modes as CarWash attributes LightsCeiling / LightsHexagons /
+-- LightsArches ("Auto", "On" or "Off"), which client/LightShow and
+-- client/ArchLights follow.
 -- Commands come in through ReplicatedStorage.CarWashRemotes.ControlPanel
 -- (a RemoteFunction: action, ... -> ok, message), checked against the
 -- operator list here.
@@ -26,7 +29,6 @@ local RunService = game:GetService("RunService")
 
 local Config = require(script.Parent.Config)
 local Gates = require(script.Parent.Gates)
-local Kiosk = require(script.Parent.Kiosk)
 local Wash = require(script.Parent.Wash)
 local WashLine = require(script.Parent.WashLine)
 local Arches = require(script.Parent.Wash.Arches)
@@ -138,40 +140,13 @@ for _, machine in machines do
 	machineByKey[machine.key] = machine
 end
 
-type Setting = {
-	key: string,
-	label: string,
-	unit: string,
-	step: number,
-	min: number,
-	max: number,
-	get: () -> number,
-	set: (number) -> (),
-	default: number?,
-}
-
-local function configSetting(key: string, label: string, unit: string, step: number, min: number, max: number): Setting
-	return {
-		key = key,
-		label = label,
-		unit = unit,
-		step = step,
-		min = min,
-		max = max,
-		get = function()
-			return Config[key]
-		end,
-		set = function(value)
-			Config[key] = value
-		end,
-	}
-end
-
-local settings: { Setting } = {
-	configSetting("TunnelSpeed", "Tunnel speed", "studs/s", 0.1, 0.4, 3),
-	configSetting("ConveyorSpeed", "Dryer / exit speed", "studs/s", 0.25, 0.5, 4),
-	configSetting("DrySeconds", "Dry time", "s", 5, 10, 120),
-	configSetting("ExitGateOpenSeconds", "Exit gate wait", "s", 1, 2, 15),
+-- The tunnel lights an operator can switch: each group's mode is a CarWash
+-- attribute ("Lights" .. group) the client light scripts follow. "Auto" runs
+-- the light show with the wash. The emergency stop overrides them all.
+local LIGHT_GROUPS = {
+	Ceiling = { label = "Ceiling lights", modes = { "Auto", "On", "Off" } },
+	Hexagons = { label = "Wall hexagons", modes = { "Auto", "On", "Off" } },
+	Arches = { label = "Arch LEDs", modes = { "Auto", "Off" } },
 }
 
 -- The programs, cheapest first.
@@ -182,30 +157,6 @@ end
 table.sort(programOrder, function(a, b)
 	return Config.Programs[a].price < Config.Programs[b].price
 end)
-
-for _, key in programOrder do
-	local program = Config.Programs[key]
-	table.insert(settings, {
-		key = "Price_" .. key,
-		label = `{program.name} price`,
-		unit = Config.Currency,
-		step = 1,
-		min = 0,
-		max = 100,
-		get = function()
-			return program.price
-		end,
-		set = function(value)
-			program.price = value
-			Kiosk.refreshMenu()
-		end,
-	})
-end
-local settingByKey: { [string]: Setting } = {}
-for _, setting in settings do
-	setting.default = setting.get()
-	settingByKey[setting.key] = setting
-end
 
 ------------------------------------------------------------------------------
 -- Published state
@@ -219,12 +170,6 @@ local function publish(name: string, value: any)
 	end
 end
 
-local function publishSettings()
-	for _, setting in settings do
-		publish("Set_" .. setting.key, setting.get())
-	end
-end
-
 local function publishStatic()
 	local machineList = {}
 	for _, machine in machines do
@@ -232,23 +177,13 @@ local function publishStatic()
 	end
 	State:SetAttribute("Machines", HttpService:JSONEncode(machineList))
 
-	local settingList = {}
-	for _, setting in settings do
-		table.insert(settingList, {
-			key = setting.key,
-			label = setting.label,
-			unit = setting.unit,
-			step = setting.step,
-		})
-	end
-	State:SetAttribute("Settings", HttpService:JSONEncode(settingList))
-
 	local programList = {}
 	for _, key in programOrder do
 		local program = Config.Programs[key]
 		table.insert(programList, {
 			key = key,
 			name = program.name,
+			price = program.price,
 			stages = #program.arches + (if program.topBrush then 1 else 0),
 		})
 	end
@@ -501,33 +436,14 @@ local COMMANDS: { [string]: (Player, any, any) -> (boolean, string) } = {
 		return ok, message
 	end,
 
-	Adjust = function(player, key, direction)
-		local setting = type(key) == "string" and settingByKey[key]
-		if not setting or (direction ~= 1 and direction ~= -1) then
-			return false, "Unknown setting"
+	Lights = function(player, group, mode)
+		local spec = type(group) == "string" and LIGHT_GROUPS[group]
+		if not spec or not table.find(spec.modes, mode) then
+			return false, "Unknown light setting"
 		end
-		local old = setting.get()
-		-- snap to the step so float drift never builds up
-		local value = math.clamp(math.round((old + direction * setting.step) / setting.step) * setting.step, setting.min, setting.max)
-		value = math.round(value * 100) / 100
-		if value == old then
-			return false, if direction > 0 then "Already at the maximum" else "Already at the minimum"
-		end
-		setting.set(value)
-		publishSettings()
-		addLog("info", `{player.DisplayName} set {setting.label} to {value}`)
-		return true, `{setting.label}: {value}`
-	end,
-
-	ResetSettings = function(player)
-		for _, setting in settings do
-			if setting.default then
-				setting.set(setting.default)
-			end
-		end
-		publishSettings()
-		addLog("info", `{player.DisplayName} restored the default settings`)
-		return true, "Settings restored"
+		CarWash:SetAttribute("Lights" .. group, mode)
+		addLog("info", `{player.DisplayName} set {spec.label:lower()} to {mode}`)
+		return true, `{spec.label}: {mode}`
 	end,
 
 	ResetStats = function(player)
@@ -573,6 +489,7 @@ local function update(booth: Booth?)
 	publish("Line", line)
 	publish("Admitted", admitted)
 	publish("EStop", line == "Stopped")
+	publish("CarInTunnel", Wash.carInTunnel())
 	for _, machine in machines do
 		publish("M_" .. machine.key, machine.get())
 	end
@@ -613,7 +530,9 @@ function ControlPanel.start()
 	end
 
 	publishStatic()
-	publishSettings()
+	for group in LIGHT_GROUPS do
+		CarWash:SetAttribute("Lights" .. group, "Auto")
+	end
 	State:SetAttribute("StartedAt", workspace:GetServerTimeNow())
 	publishStats()
 	addLog("info", "Control panel online")
