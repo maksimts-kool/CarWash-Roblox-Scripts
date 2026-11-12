@@ -9,6 +9,9 @@
       "$keepUnknowns": true,
       "CarWash": {
         "$path": "src/server"
+      },
+      "Simulator": {
+        "$path": "src/simulator/server"
       }
     },
     "StarterPlayer": {
@@ -22,6 +25,9 @@
         "$keepUnknowns": true,
         "CarWash": {
           "$path": "src/client"
+        },
+        "Simulator": {
+          "$path": "src/simulator/client"
         }
       }
     }

@@ -6,5 +6,8 @@
 -- their moving parts are saved unanchored on hinges, which this replaces.
 require(script.Joints).setup()
 
+-- Dirt / soap / water / shine on every car; the wash line feeds it.
+require(script.CarCondition).start()
+
 require(script.Cash).start()
 require(script.WashLine).start()

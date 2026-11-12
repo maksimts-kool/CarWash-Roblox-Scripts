@@ -12,7 +12,9 @@
 --   3. every HingeConstraint becomes a Motor6D in the same place, joining the
 --      moving side to the side that holds it (anchored, or itself held by a
 --      joint made earlier). Hinges named "HingeConstraint" become "Joint";
---      others keep their name;
+--      others keep their name. Machines saved with no constraints at all
+--      (the top brush) get their joints from pairs of plain Attachments
+--      instead (see BUILT below);
 --   4. every FanMotor gets a Motor6D "Joint" spinning it about its right face,
 --      on a hidden anchored pivot, and its surface motor is removed;
 --   5. every other constraint and body mover is removed (visible ropes, rods
@@ -29,6 +31,10 @@
 --   Rest   the hinge angle the joint was built at
 --   Sign   1, or -1 when the hinge's attachments were the other way round
 --
+--   Kind   "Slide" for a joint that slides instead of turning: Target, Speed
+--          and Rest are then studs along the joint's axis, and Min / Max
+--          are how far it may go
+--
 -- Angles are hinge angles, so the old TargetAngle values still apply.
 
 local CollectionService = game:GetService("CollectionService")
@@ -39,6 +45,7 @@ local CarWash = workspace:WaitForChild("CarWash")
 
 local TAG = "CarWashJoint"
 local DEFAULT_SERVO_SPEED = 90 -- degrees per second, for hinges saved without an AngularSpeed
+local DEFAULT_SLIDE_SPEED = 4 -- studs per second, for slide joints given no speed
 local MAX_SERVO_SPEED = 360
 -- Parts moved by a joint stop colliding (they'd shove the car), except these
 -- barrier arms, which still have to stop a car that hasn't paid.
@@ -133,6 +140,11 @@ end
 local function hingeAngle(a: Attachment, b: Attachment): number
 	local up = a.WorldCFrame:VectorToObjectSpace(b.WorldCFrame.UpVector)
 	return math.deg(math.atan2(up.Z, up.Y))
+end
+
+-- How far (studs) attachment `b` is along attachment `a`'s primary (X) axis.
+local function slideOffset(a: Attachment, b: Attachment): number
+	return (b.WorldPosition - a.WorldPosition):Dot(a.WorldCFrame.RightVector)
 end
 
 type HingeInfo = {
@@ -232,6 +244,72 @@ local function convertHinges(skip: (Instance) -> boolean)
 	end
 	for _, info in pending do
 		warn(`Joints: nothing holds either side of {info.parent:GetFullName()}.{info.name}; it will be anchored`)
+	end
+end
+
+-- Joints for machines saved with no constraints: each is marked by two plain
+-- Attachments inside `model` (a path under CarWash), one on the part that
+-- holds it and one on the part that moves. The holder attachment is the
+-- pivot, and its X axis is the joint's axis.
+--
+--   "Spin"   turns about that axis; starts stopped
+--   "Slide"  slides along it, in studs, between min and max; starts at rest
+--
+-- The joint is called `name` and lives under the moving part. A joint can only
+-- hang off a part that's already held, so list a carriage before what it carries.
+type Built = {
+	model: { string },
+	holder: string,
+	moving: string,
+	kind: "Spin" | "Slide",
+	name: string,
+	min: number?,
+	max: number?,
+	speed: number?,
+}
+local BUILT: { Built } = {
+	-- the top brush's carriage slides down the left post (Lift 0 = the top)
+	{ model = { "New", "TopBrush" }, holder = "LiftGuide", moving = "LiftCarriage", kind = "Slide", name = "Lift", min = -6.8, max = 0, speed = 5 },
+	-- and the brush spins on the carriage
+	{ model = { "New", "TopBrush" }, holder = "SpinHolder", moving = "SpinAxle", kind = "Spin", name = "MotorMain" },
+}
+
+local function buildMarked()
+	for _, spec in BUILT do
+		local path = `CarWash.{table.concat(spec.model, ".")}`
+		local model: Instance? = CarWash
+		for _, name in spec.model do
+			model = model and model:FindFirstChild(name)
+		end
+		local holder = model and model:FindFirstChild(spec.holder, true)
+		local moving = model and model:FindFirstChild(spec.moving, true)
+		if not (holder and moving and holder:IsA("Attachment") and moving:IsA("Attachment")
+			and holder.Parent and holder.Parent:IsA("BasePart") and moving.Parent and moving.Parent:IsA("BasePart")) then
+			warn(`Joints: {path} needs attachments {spec.holder} and {spec.moving} on parts for its {spec.name} joint`)
+			continue
+		end
+		local p0, p1 = holder.Parent :: BasePart, moving.Parent :: BasePart
+		if not isHeld(p0) then
+			warn(`Joints: nothing holds {p0:GetFullName()}, so {path}.{spec.name} can't be built`)
+			continue
+		elseif isHeld(p1) then
+			warn(`Joints: {p1:GetFullName()} is fixed (anchored?), so {path}.{spec.name} can't move`)
+			continue
+		end
+
+		local joint = makeJoint(p0, p1, holder.CFrame, spec.name, p1)
+		joint:SetAttribute("Sign", 1)
+		if spec.kind == "Slide" then
+			local rest = slideOffset(holder, moving)
+			joint:SetAttribute("Kind", "Slide")
+			joint:SetAttribute("Rest", rest)
+			joint:SetAttribute("Min", spec.min)
+			joint:SetAttribute("Max", spec.max)
+			Joints.servo(joint, rest, spec.speed or DEFAULT_SLIDE_SPEED)
+		else
+			joint:SetAttribute("Rest", hingeAngle(holder, moving))
+			Joints.spin(joint, 0)
+		end
 	end
 end
 
@@ -363,6 +441,7 @@ function Joints.setup()
 	Welds.weldAll()
 	convertFans() -- before convertRotates: the fans' surface motors are RotateV joints too
 	convertRotates(skip)
+	buildMarked()
 	convertHinges(skip)
 
 	-- Whatever the removed constraints were holding up stays where it is.

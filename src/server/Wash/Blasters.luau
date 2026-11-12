@@ -58,6 +58,9 @@ local Module = {}
 
 -- The blasters can switch off once the car's tail passes this.
 Module.END_Z = headMinZ - 2
+-- Where along the lane the heads spray (for CarCondition).
+Module.MIN_Z = headMinZ
+Module.MAX_Z = headMaxZ
 
 -- What the sensor saw of the current car: spans of distance behind its nose.
 type Span = { from: number, to: number }

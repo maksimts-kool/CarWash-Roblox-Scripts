@@ -57,6 +57,7 @@ local function stopSoundFor(dryer: Instance, hum: Sound): Sound?
 end
 
 local units = {}
+local outletMinZ, outletMaxZ = math.huge, -math.huge
 for _, child in CarWash:GetChildren() do
 	if not child.Name:match("^KWS Storm Dryer") then
 		continue
@@ -84,6 +85,8 @@ for _, child in CarWash:GetChildren() do
 	local firstZ = -math.huge
 	for _, outlet in outlets do
 		firstZ = math.max(firstZ, outlet.Position.Z)
+		outletMinZ = math.min(outletMinZ, outlet.Position.Z)
+		outletMaxZ = math.max(outletMaxZ, outlet.Position.Z)
 	end
 	if firstZ == -math.huge then
 		firstZ = (on + off) / 2
@@ -137,6 +140,10 @@ for index, unit in units do
 	centerSum += unit.centerZ
 end
 Dryers.CENTER_Z = centerSum / #units
+-- Where along the lane the air blows (for CarCondition): the outlets, plus a
+-- few studs either side for the spread of the air.
+Dryers.MIN_Z = (if outletMinZ < math.huge then outletMinZ else Dryers.CENTER_Z) - 3
+Dryers.MAX_Z = (if outletMaxZ > -math.huge then outletMaxZ else Dryers.CENTER_Z) + 3
 
 ------------------------------------------------------------------------------
 -- One dryer

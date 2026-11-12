@@ -1,5 +1,7 @@
 -- The pay terminal (CarWash.Selections): pick a wash on the screen, confirm,
 -- then tap a "Debit Card" tool on the EFT reader to pay from leaderstats.Cash.
+-- A driver parked next to the kiosk can also pay without getting out: the
+-- client fires CarWashRemotes.KioskTapCard and the reader takes their card.
 --
 -- The server owns what the screen says; client/KioskScreen animates it:
 --   Pages.Select / Confirm / Process   which page is visible
@@ -8,6 +10,7 @@
 --   Pages.Process.Status Title/Message what the payment is doing
 
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Cash = require(script.Parent.Cash)
 local Config = require(script.Parent.Config)
@@ -48,6 +51,9 @@ local PAYMENT_SEQUENCE = {
 
 local CARD_TOOL = "Debit Card"
 local READER_COOLDOWN = 10
+local DRIVE_UP_RANGE = 14 -- studs from the reader to the driver's seat
+
+local TapCardRemote = ReplicatedStorage:WaitForChild("CarWashRemotes"):WaitForChild("KioskTapCard")
 
 local Kiosk = {}
 
@@ -80,8 +86,13 @@ local function showReaderMessage(title: string, message: string)
 	LCD.Message.Txt2.Text = message
 end
 
-local function includes(program: string, stage: string): boolean
-	return table.find(Config.Programs[program].arches, stage) ~= nil
+-- Does `program` include this feature: an arch stage, or "TopBrush"?
+local function includes(program: string, feature: string): boolean
+	local info = Config.Programs[program]
+	if feature == "TopBrush" then
+		return info.topBrush == true
+	end
+	return table.find(info.arches, feature) ~= nil
 end
 
 -- One line of a wash's stage list: a ticked dot, or a dash when the wash skips it.
@@ -94,14 +105,15 @@ local function showFeature(row: Instance, stage: string, included: boolean, acce
 	row.Icon.Dash.Visible = not included
 end
 
--- Fills each menu card from Config: name, price and the stages it runs.
+-- Fills each menu card from Config: name, what it includes, and the price
+-- on its button (each fact shows once).
 local function fillMenu()
 	for program, info in Config.Programs do
 		local slot = Cards[program]
 		local accent = slot:GetAttribute("Accent")
 		slot.Card.WashName.Text = info.name
-		slot.Card.Price.Text = formatPrice(info.price)
-		for index, stage in Config.StageOrder do
+		slot.Card.Choose.Label.Text = formatPrice(info.price)
+		for index, stage in Config.MenuFeatures do
 			local row = slot.Card.Features:FindFirstChild("Feature" .. index)
 			if row then
 				showFeature(row, stage, includes(program, stage), accent)
@@ -140,11 +152,10 @@ local function fillSummary(program: string)
 		end
 	end
 	band.WashName.Text = info.name
-	band.Tag.Text = `{#info.arches} wash stages`
 
 	local rows = Summary.Features
 	local index = 0
-	for _, stage in Config.StageOrder do
+	for _, stage in Config.MenuFeatures do
 		if includes(program, stage) then
 			index += 1
 			local row = rows:FindFirstChild("Feature" .. index)
@@ -161,10 +172,11 @@ local function fillSummary(program: string)
 			row.Visible = false
 		end
 	end
+	band.Tag.Text = `{index} stages`
 
 	Side.Total.Card.Price.Text = formatAmount(info.price)
-	Side.Confirm.Label.Text = "Pay " .. formatPrice(info.price)
-	Steps.Selected.Sub.Text = `{info.name} · {formatPrice(info.price)}`
+	Side.Confirm.Label.Text = "Pay"
+	Steps.Selected.Sub.Text = info.name
 	Status.Amount.Text = formatAmount(info.price)
 end
 
@@ -178,7 +190,8 @@ local function armReader(price: number)
 		light.BackgroundColor3 = LIGHT_OFF
 	end
 	Steps.Drive.Sub.Text = "Wait for the gate to open"
-	showPayment("WaitingForCard", "Tap your card", "Hold your Debit Card to the reader below")
+	-- the step list says what to do; the status card only says how it's going
+	showPayment("WaitingForCard", "Ready", "")
 end
 
 local function pay(player: Player)
@@ -196,24 +209,24 @@ local function pay(player: Player)
 
 	LCD.Ready.Visible = false
 	LCD.Message.Visible = true
+	showPayment("Processing", "Processing", "")
 	for _, step in PAYMENT_SEQUENCE do
 		showReaderMessage(step.title, step.message)
-		showPayment("Processing", "Processing", step.message)
 		task.wait(step.seconds)
 	end
 
 	if Cash.charge(player, Config.Programs[program].price) then
 		showReaderMessage("", "Accepted")
-		showPayment("Paid", "Payment accepted", "The gate opens as soon as the wash is free")
+		showPayment("Paid", "Accepted", "")
 		task.spawn(function()
 			onPaid(program)
 			Steps.Drive.Sub.Text = "The gate is open"
-			showPayment("Proceed", "Drive in", "Drive forward onto the conveyor")
+			showPayment("Proceed", "Accepted", "")
 		end)
 		task.wait(2)
 	else
 		showReaderMessage("Declined", "Insufficient funds")
-		showPayment("Declined", "Card declined", "Insufficient funds")
+		showPayment("Declined", "Declined", "Not enough money")
 		task.wait(3)
 		showPage("Select")
 	end
@@ -251,20 +264,47 @@ local function connectButtons()
 	end)
 end
 
+local coolingDown = false
+local function tryPay(player: Player)
+	if coolingDown or paying then
+		return
+	end
+	coolingDown = true
+	pay(player)
+	task.wait(READER_COOLDOWN)
+	coolingDown = false
+end
+
+local function hasCard(player: Player): boolean
+	local backpack = player:FindFirstChildOfClass("Backpack")
+	return (backpack ~= nil and backpack:FindFirstChild(CARD_TOOL) ~= nil)
+		or (player.Character ~= nil and player.Character:FindFirstChild(CARD_TOOL) ~= nil)
+end
+
+-- Is this player sitting in a car right next to the reader?
+local function parkedAtKiosk(player: Player): boolean
+	local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+	local seat = humanoid and humanoid.SeatPart
+	return seat ~= nil
+		and seat:IsA("VehicleSeat")
+		and (seat.Position - Reader.Touchpart.Position).Magnitude <= DRIVE_UP_RANGE
+end
+
 local function connectReader()
-	local coolingDown = false
 	Reader.Touchpart.Touched:Connect(function(hit)
-		if coolingDown or paying or hit.Parent.Name ~= CARD_TOOL then
+		if hit.Parent.Name ~= CARD_TOOL then
 			return
 		end
 		local player = Players:GetPlayerFromCharacter(hit.Parent.Parent)
-		if not player then
-			return
+		if player then
+			tryPay(player)
 		end
-		coolingDown = true
-		pay(player)
-		task.wait(READER_COOLDOWN)
-		coolingDown = false
+	end)
+
+	TapCardRemote.OnServerEvent:Connect(function(player)
+		if LCD.Ready.Visible and hasCard(player) and parkedAtKiosk(player) then
+			tryPay(player)
+		end
 	end)
 end
 

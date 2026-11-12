@@ -19,6 +19,8 @@ local ASSEMBLIES = {
 	{ "WrapArounds", "Brushes", "BrushTwo", "BrushMotor" },
 	{ "RockerBrushes", "BrushTwo", "RockerBrush", "BrushPart" },
 	{ "RockerBrushes", "BrushTwo", "RockerBrush", "BrushMotor" },
+	{ "New", "TopBrush", "Carriage" }, -- slides up and down the posts on its Lift joint
+	{ "New", "TopBrush", "BrushMotor" }, -- spins on the carriage on its MotorMain joint
 }
 
 -- The rotary wheel blasters' heads (BlasterPart, BlasterPart2, ...) under each

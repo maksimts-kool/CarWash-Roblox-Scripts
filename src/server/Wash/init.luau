@@ -1,7 +1,9 @@
 -- Runs every machine in the wash line from one timeline, so the conveyor,
 -- brushes, arches, dryers, screens and exit gate always agree.
 --
---   pickup -> blasters + wrap-arounds -> rockers -> arches -> dryers -> exit
+--   pickup -> blasters + top brush* + wrap-arounds -> rockers -> arches -> dryers -> exit
+--
+-- * the top brush only runs for programs with `topBrush = true` (Middle, Full).
 --
 -- The car moves at Config.TunnelSpeed until its nose reaches the program's
 -- first arch, at the program's archSpeed until its tail clears the last one,
@@ -9,7 +11,12 @@
 --
 -- Publishes WashPhase / WashPhaseSince on CarWash for the client light show:
 -- "Idle", "Ready", "Washing", "Drying", "Exit", "Finished".
+--
+-- Each machine also tells CarCondition while it is working, and on which
+-- stretch of lane, so each section of the car gets scrubbed, foamed, rinsed,
+-- waxed and dried as it passes under that machine.
 
+local CarCondition = require(script.Parent.CarCondition)
 local Config = require(script.Parent.Config)
 local Gates = require(script.Parent.Gates)
 local Arches = require(script.Arches)
@@ -19,15 +26,17 @@ local Car = require(script.Car)
 local Conveyor = require(script.Conveyor)
 local Dryers = require(script.Dryers)
 local Screens = require(script.Screens)
+local TopBrush = require(script.TopBrush)
 
 local CarWash = workspace:WaitForChild("CarWash")
 
-local BRUSH_STAGE = "Brush Wash"
 -- Countdown estimates follow the car; they're only republished when they
 -- drift this many seconds.
 local COUNTDOWN_TOLERANCE = 0.5
 local COUNTDOWN_INTERVAL = 0.1
 local EXIT_CLEARANCE = 3 -- studs past the exit sensor before the gate closes
+local WRAP_REACH = Config.ConditionReach.Wraps -- studs either side of the wrap-arounds they scrub
+local ARCH_REACH = Config.ConditionReach.Arch -- studs either side of an arch it sprays
 
 local Wash = {}
 
@@ -120,14 +129,14 @@ end
 
 -- Wash Time counts down to the car's tail clearing the last arch; its
 -- progress bar shows how far through the current step the car is.
-local function startCountdown(zone: Zone)
+local function startCountdown(zone: Zone, brushStage: string)
 	local myRun = runId
 	local endsAt = now() + washSecondsLeft(zone)
 	zone.stage = 1
 	Screens.set(Screens.Wash, "Running", {
 		EndsAt = endsAt,
 		Total = math.max(washSecondsLeft(zone), 1),
-		Stage = BRUSH_STAGE,
+		Stage = brushStage,
 		StageIndex = 1,
 		StageCount = #zone.stageStarts,
 	})
@@ -165,13 +174,53 @@ end
 local function runTunnel(program)
 	local front, rear = Conveyor.frontReaches, Conveyor.rearPasses
 	local triggers: { Conveyor.Trigger } = {
-		{ ready = rear(Blasters.END_Z), run = function() Blasters.set(false) end },
+		{
+			ready = rear(Blasters.END_Z),
+			run = function()
+				Blasters.set(false)
+				CarCondition.setEffect("Blasters", false)
+			end,
+		},
 		{ ready = front(Brushes.WRAP_Z + 5), run = Brushes.closeWraps },
 		{ ready = rear(Brushes.WRAP_Z - 2), run = Brushes.openWraps },
-		{ ready = rear(Brushes.WRAP_Z - 12), run = function() Brushes.setWraps(false) end },
-		{ ready = front(Brushes.ROCKER_START_Z), run = function() Brushes.setRockers(true) end },
-		{ ready = rear(Brushes.ROCKER_END_Z), run = function() Brushes.setRockers(false) end },
+		{
+			ready = rear(Brushes.WRAP_Z - 12),
+			run = function()
+				Brushes.setWraps(false)
+				CarCondition.setEffect("Wraps", false)
+			end,
+		},
+		{
+			ready = front(Brushes.ROCKER_START_Z),
+			run = function()
+				Brushes.setRockers(true)
+				CarCondition.setEffect("Rockers", true, Brushes.ROCKER_END_Z, Brushes.ROCKER_START_Z)
+			end,
+		},
+		{
+			ready = rear(Brushes.ROCKER_END_Z),
+			run = function()
+				Brushes.setRockers(false)
+				CarCondition.setEffect("Rockers", false)
+			end,
+		},
 	}
+	if program.topBrush then
+		table.insert(triggers, {
+			ready = front(TopBrush.START_Z),
+			run = function()
+				TopBrush.start()
+				CarCondition.setEffect("TopBrush", true, TopBrush.END_Z, TopBrush.START_Z)
+			end,
+		})
+		table.insert(triggers, {
+			ready = rear(TopBrush.END_Z),
+			run = function()
+				TopBrush.stop()
+				CarCondition.setEffect("TopBrush", false)
+			end,
+		})
+	end
 
 	-- The brushes are step 1 (already running), then one step per arch.
 	local zone: Zone = {
@@ -196,10 +245,17 @@ local function runTunnel(program)
 				ready = front(startZ),
 				run = function()
 					Arches.set(arch, true)
+					CarCondition.setEffect(arch.key, true, arch.z - ARCH_REACH, arch.z + ARCH_REACH)
 					setStage(zone, stageIndex, Arches.StageNames[arch.key] or arch.key)
 				end,
 			})
-			table.insert(triggers, { ready = rear(endZ), run = function() Arches.set(arch, false) end })
+			table.insert(triggers, {
+				ready = rear(endZ),
+				run = function()
+					Arches.set(arch, false)
+					CarCondition.setEffect(arch.key, false)
+				end,
+			})
 			-- start slowing a little early so the car is already crawling when the first arch switches on
 			zone.archStartZ = math.max(zone.archStartZ, startZ + 1.5)
 			zone.archEndZ = math.min(zone.archEndZ, endZ)
@@ -207,12 +263,20 @@ local function runTunnel(program)
 	end
 	-- each dryer starts as the car's nose gets right under it, one at a time
 	for index, z in Dryers.startZs do
-		table.insert(triggers, { ready = front(z), run = function() Dryers.startUnit(index) end })
+		table.insert(triggers, {
+			ready = front(z),
+			run = function()
+				Dryers.startUnit(index)
+				CarCondition.setEffect("Dryers", true, Dryers.MIN_Z, Dryers.MAX_Z)
+			end,
+		})
 	end
 
-	startCountdown(zone)
+	startCountdown(zone, if program.topBrush then Config.TopBrushStageName else Config.BrushStageName)
 	Blasters.set(true)
 	Brushes.setWraps(true)
+	CarCondition.setEffect("Blasters", true, Blasters.MIN_Z, Blasters.MAX_Z)
+	CarCondition.setEffect("Wraps", true, Brushes.WRAP_Z - WRAP_REACH, Brushes.WRAP_Z + WRAP_REACH)
 	Conveyor.moveCarTo(Dryers.CENTER_Z - Car.length() / 2, triggers, function()
 		return zoneSpeed(zone)
 	end)
@@ -221,6 +285,7 @@ end
 local function runDryers()
 	-- any dryer the car's nose didn't reach starts now, still one at a time
 	Dryers.startAll()
+	CarCondition.setEffect("Dryers", true) -- parked under them: the whole car
 	Screens.set(Screens.Dry, "Running", {
 		EndsAt = now() + Config.DrySeconds,
 		Total = Config.DrySeconds,
@@ -228,6 +293,7 @@ local function runDryers()
 	task.wait(Config.DrySeconds)
 	Screens.set(Screens.Dry, "Done")
 	Dryers.stop()
+	CarCondition.clearEffects()
 end
 
 local function releaseCar()
@@ -257,6 +323,7 @@ function Wash.run(programKey: string, entryHit: BasePart?)
 	Car.waitForPickup(Brushes.PickupSensor, Brushes.PICKUP_Z, Config.ArrivalTimeout)
 	Car.grab()
 	Car.publish(true)
+	local washedModel = Car.model()
 
 	setPhase("Washing")
 	runTunnel(program)
@@ -265,6 +332,12 @@ function Wash.run(programKey: string, entryHit: BasePart?)
 	setPhase("Exit")
 	releaseCar()
 	setPhase("Finished")
+
+	-- Car Wash Simulator (ServerScriptService.Simulator) pays for washed cars.
+	if washedModel then
+		washedModel:SetAttribute("LastWashProgram", programKey)
+		washedModel:SetAttribute("LastWashAt", workspace:GetServerTimeNow())
+	end
 
 	Car.unpublish()
 	Screens.idle()
@@ -278,9 +351,11 @@ end
 -- Every machine back to idle.
 function Wash.reset()
 	runId += 1
+	CarCondition.clearEffects()
 	Arches.resetAll()
 	Brushes.setWraps(false)
 	Brushes.setRockers(false)
+	TopBrush.stop()
 	Blasters.set(false)
 	Conveyor.stop()
 	Dryers.reset()
