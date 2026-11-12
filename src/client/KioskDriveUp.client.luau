@@ -40,7 +40,22 @@ local payButton = bar:WaitForChild("TapCard")
 local payGlow = payButton:WaitForChild("Glow")
 local leaveButton = bar:WaitForChild("Leave")
 local openButton = gui:WaitForChild("OpenKiosk")
-local openScale = openButton:WaitForChild("Scale")
+
+-- The buttons are sized in Scale, but outlines can't be: UIStrokes with a
+-- BaseThickness attribute get it times the screen's scale (reference screen
+-- 1440 x 841, a MacBook), the same factor the buttons' aspect ratios give.
+local function sizeStrokes()
+	local screen = gui.AbsoluteSize
+	local scale = math.min(screen.X / 1440, screen.Y / 841)
+	for _, item in gui:GetDescendants() do
+		local base = item:GetAttribute("BaseThickness")
+		if item:IsA("UIStroke") and typeof(base) == "number" then
+			item.Thickness = base * scale
+		end
+	end
+end
+gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(sizeStrokes)
+sizeStrokes()
 
 local RANGE = 9 -- studs (flat) from the driver's seat to the kiosk screen
 local STOPPED_SPEED = 2.5
@@ -179,7 +194,7 @@ local function refreshBar()
 		payGlow.Size = UDim2.fromScale(1, 1)
 		payGlow.BackgroundTransparency = 0.4
 		pulse = TweenService:Create(payGlow, TweenInfo.new(1.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, -1), {
-			Size = UDim2.new(1, 22, 1, 22),
+			Size = UDim2.fromScale(1.14, 1.37), -- ~22px bigger on the reference screen
 			BackgroundTransparency = 1,
 		})
 		pulse:Play()
@@ -190,13 +205,6 @@ local function refreshBar()
 	end
 end
 
-local function fitButtons()
-	local width = camera.ViewportSize.X
-	barScale.Scale = math.clamp((width - 24) / bar.Size.X.Offset, 0.6, 1)
-	openScale.Scale = math.clamp((width - 24) / 400, 0.7, 1)
-end
-camera:GetPropertyChangedSignal("ViewportSize"):Connect(fitButtons)
-fitButtons()
 
 ---------------------------------------------------------------- camera
 local function enterView()
@@ -220,9 +228,8 @@ local function enterView()
 	setKioskUi()
 	refreshBar()
 	bar.Visible = true
-	local scale = barScale.Scale
-	barScale.Scale = scale * 0.9
-	TweenService:Create(barScale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = scale }):Play()
+	barScale.Scale = 0.9
+	TweenService:Create(barScale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
 end
 
 local function exitView()

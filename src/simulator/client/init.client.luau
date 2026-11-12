@@ -1,17 +1,26 @@
 -- Car Wash Simulator HUD logic.
 --
 -- The GUI itself is StarterGui.SimHud: edit its layout, colours and fonts
--- there. This script only fills it in and animates it:
---   Stats / UpgradesButton   cash, level + XP bar, rating
---   Objective + Waypoint     what to do next, and an arrow on the target
---   Job                      the current job's facts: customer, car, wash, reward
+-- there. Its layout is all in Scale, made on a MacBook (1440 x 841 below the
+-- top bar): every top-level panel has a UIAspectRatioConstraint so it keeps
+-- its shape and fits any screen. One-line texts are TextScaled (padded to
+-- their text height); texts that wrap and outlines have BaseTextSize /
+-- BaseThickness attributes (see sizeToScreen below). Keep new pieces in
+-- Scale too (no pixel Offsets).
+-- This script only fills it in and animates it:
+--   TopLeft                  Stats (cash, level + XP bar, rating) and the
+--                            UpgradesButton
+--   Side                     the right-hand column, so the top and bottom of
+--                            the screen stay clear:
+--     Objective + Waypoint   what to do next, and an arrow on the target
+--     Job                    the current job's facts: customer, car, wash, reward
+--     Toasts                 notifications (cloned from Templates.Toast)
 --
 -- Every fact or instruction shows in ONE place only: the objective says what
 -- to do, the job panel holds the job's facts, buttons are actions, toasts are
 -- for things nothing else shows. While the drive-up kiosk is in use (player
 -- attribute "KioskUi"), its screen gives the instructions and the objective
 -- and job panel step aside.
---   Toasts                   notifications (cloned from Templates.Toast)
 --   Reward / Shop / Dim      the job result card and the upgrades shop
 --
 -- Data comes from the player attributes ServerScriptService.Simulator sets
@@ -22,8 +31,8 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local TextService = game:GetService("TextService")
 local TweenService = game:GetService("TweenService")
-local UserInputService = game:GetService("UserInputService")
 
 local SimConfig = require(ReplicatedStorage:WaitForChild("SimConfig"))
 local Remotes = ReplicatedStorage:WaitForChild("SimRemotes")
@@ -72,15 +81,51 @@ local function money(n: number): string
 end
 
 ---------------------------------------------------------------- the GUI
-local Stats = gui.Stats
-local Objective = gui.Objective
-local Toasts = gui.Toasts
-local Job = gui.Job
+local Stats = gui.TopLeft.Stats
+local Side = gui.Side
+local Objective = Side.Objective
+local Toasts = Side.Toasts
+local Job = Side.Job
 local Waypoint = gui.Waypoint
 local Dim = gui.Dim
 local Reward = gui.Reward
 local Shop = gui.Shop
 local Templates = gui.Templates
+
+-- Two things Scale can't size: texts that wrap over several lines (objective
+-- hint, toasts, the reward quote; TextScaled would blow a short text up to
+-- fill its box) and outlines. Labels with a BaseTextSize attribute and
+-- UIStrokes with a BaseThickness attribute get that size times the screen's
+-- scale, the same factor the panels' UIAspectRatioConstraints give them, so
+-- they grow and shrink with everything else.
+local DESIGN_SCREEN = Vector2.new(1440, 841)
+
+local function screenScale(): number
+	local screen = gui.AbsoluteSize
+	return math.min(screen.X / DESIGN_SCREEN.X, screen.Y / DESIGN_SCREEN.Y)
+end
+
+local function sizeToScreen(item: Instance)
+	if item:IsA("TextLabel") then
+		local base = item:GetAttribute("BaseTextSize")
+		if typeof(base) == "number" then
+			item.TextSize = math.max(1, math.floor(base * screenScale())) -- down, so it never outgrows its box
+		end
+	elseif item:IsA("UIStroke") then
+		local base = item:GetAttribute("BaseThickness")
+		if typeof(base) == "number" then
+			item.Thickness = base * screenScale()
+		end
+	end
+end
+local function sizeAllToScreen()
+	for _, child in gui:GetDescendants() do
+		sizeToScreen(child)
+	end
+end
+gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(sizeAllToScreen)
+gui.DescendantAdded:Connect(sizeToScreen)
+sizeAllToScreen()
 
 ---------------------------------------------------------------- stats
 local cashLabel = Stats.Cash.Amount
@@ -127,10 +172,6 @@ end
 refreshLevel()
 
 ---------------------------------------------------------------- notifications
-if UserInputService.TouchEnabled then
-	-- clear the jump button
-	Toasts.Position = UDim2.new(1, -16, 1, -170)
-end
 local toastOrder = 0
 
 -- Fades a notification in or out (the template's look is the "in" state).
@@ -147,11 +188,46 @@ local function fadeToast(frame: Frame, visible: boolean, seconds: number)
 	end
 end
 
+-- A toast is as big as its message needs: measured in reference-screen
+-- pixels, then turned into Scale of the Toasts column, so it still grows and
+-- shrinks with the screen.
+local TOAST = { padLeft = 12, padRight = 16, padY = 10, icon = 28, gap = 10, textSize = 17, maxTextWidth = 234 }
+local TOASTS_SIZE = Vector2.new(300, 196) -- the Toasts column on the reference screen
+
+local function fitToast(frame: Frame)
+	local label = frame:FindFirstChild("Message") :: TextLabel
+	local params = Instance.new("GetTextBoundsParams")
+	params.Text = label.Text
+	params.Font = label.FontFace
+	params.Size = TOAST.textSize
+	params.Width = TOAST.maxTextWidth
+	local ok, bounds = pcall(TextService.GetTextBoundsAsync, TextService, params)
+	if not ok then
+		return -- keep the template's full size
+	end
+	local text = Vector2.new(math.ceil(bounds.X) + 2, math.ceil(bounds.Y))
+	local width = TOAST.padLeft + TOAST.icon + TOAST.gap + text.X + TOAST.padRight
+	local height = math.max(TOAST.icon, text.Y) + 2 * TOAST.padY
+	local inner = Vector2.new(width - TOAST.padLeft - TOAST.padRight, height - 2 * TOAST.padY)
+	frame.Size = UDim2.fromScale(width / TOASTS_SIZE.X, height / TOASTS_SIZE.Y)
+	local pad = frame:FindFirstChildOfClass("UIPadding") :: UIPadding
+	pad.PaddingLeft = UDim.new(TOAST.padLeft / width, 0)
+	pad.PaddingRight = UDim.new(TOAST.padRight / width, 0)
+	pad.PaddingTop = UDim.new(TOAST.padY / height, 0)
+	pad.PaddingBottom = UDim.new(TOAST.padY / height, 0)
+	local list = frame:FindFirstChildOfClass("UIListLayout") :: UIListLayout
+	list.Padding = UDim.new(TOAST.gap / inner.X, 0)
+	local icon = frame:FindFirstChild("Icon") :: ImageLabel
+	icon.Size = UDim2.fromScale(TOAST.icon / inner.X, TOAST.icon / inner.Y)
+	label.Size = UDim2.fromScale(text.X / inner.X, text.Y / inner.Y)
+end
+
 local function toast(message: string, kind: string?)
 	toastOrder += 1
 	local frame = Templates.Toast:Clone()
 	frame.LayoutOrder = toastOrder
 	frame.Message.Text = message
+	fitToast(frame)
 	frame.Icon.Image = Icons[TOAST_ICONS[kind or "info"] or "Info"] or ""
 	frame.UIStroke.Color = TOAST_COLORS[kind or "info"] or C.blue
 	-- start invisible and a little small, then fade in
@@ -351,16 +427,15 @@ local function showModal(frame: Frame)
 		openModal.Visible = false
 	end
 	openModal = frame
-	-- shrink to fit small screens
-	local viewport = if workspace.CurrentCamera then workspace.CurrentCamera.ViewportSize else Vector2.new(1280, 720)
-	local fit = math.min(1, (viewport.X - 24) / frame.Size.X.Offset, (viewport.Y - 24) / frame.Size.Y.Offset)
+	-- the window is sized in Scale with an aspect ratio, so it already fits
+	-- every screen; this UIScale is only for the pop-in
 	local scale = frame:FindFirstChild("Scale") :: UIScale
-	scale.Scale = fit * 0.85
+	scale.Scale = 0.85
 	frame.Visible = true
 	Dim.BackgroundTransparency = 1
 	Dim.Visible = true
 	tween(Dim, 0.25, { BackgroundTransparency = DIM_TRANSPARENCY })
-	tween(scale, 0.35, { Scale = fit }, Enum.EasingStyle.Back)
+	tween(scale, 0.35, { Scale = 1 }, Enum.EasingStyle.Back)
 end
 
 local function hideModal(frame: Frame)
@@ -499,7 +574,7 @@ for _, upgrade in SimConfig.Upgrades do
 	player:GetAttributeChangedSignal("Upg_" .. upgrade.id):Connect(refreshShop)
 end
 
-gui.UpgradesButton.MouseButton1Click:Connect(function()
+gui.TopLeft.UpgradesButton.MouseButton1Click:Connect(function()
 	if Shop.Visible then
 		hideModal(Shop)
 	else

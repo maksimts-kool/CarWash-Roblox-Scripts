@@ -44,18 +44,29 @@ gui.ResetOnSpawn = false
 gui.Enabled = false
 gui.DisplayOrder = 5
 
+-- Everything is sized in Scale so the panel looks the same on every screen.
+-- The numbers are pixels on the reference screen (a MacBook: 1440 x 841
+-- below the top bar), divided by the size of whatever they sit in.
+local SCREEN = Vector2.new(1440, 841)
+local PANEL = Vector2.new(200, 149) -- 10px padding around CONTENT
+local CONTENT = Vector2.new(180, 129)
+
 local panel = Instance.new("Frame")
 panel.Name = "Panel"
 panel.AnchorPoint = Vector2.new(0, 0.5)
-panel.Position = UDim2.new(0, 12, 0.4, 0)
-panel.Size = UDim2.fromOffset(200, 0)
-panel.AutomaticSize = Enum.AutomaticSize.Y
+panel.Position = UDim2.fromScale(12 / SCREEN.X, 0.4)
+panel.Size = UDim2.fromScale(PANEL.X / SCREEN.X, PANEL.Y / SCREEN.Y)
 panel.BackgroundColor3 = rgb(18, 20, 26)
 panel.BackgroundTransparency = 0.2
 panel.Parent = gui
 
+local aspect = Instance.new("UIAspectRatioConstraint")
+aspect.AspectRatio = PANEL.X / PANEL.Y
+aspect.AspectType = Enum.AspectType.FitWithinMaxSize
+aspect.Parent = panel
+
 local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim.new(0, 10)
+corner.CornerRadius = UDim.new(10 / PANEL.Y, 0)
 corner.Parent = panel
 
 local stroke = Instance.new("UIStroke")
@@ -63,27 +74,49 @@ stroke.Color = rgb(255, 255, 255)
 stroke.Transparency = 0.85
 stroke.Parent = panel
 
-local padding = Instance.new("UIPadding")
-for _, side in { "PaddingTop", "PaddingBottom", "PaddingLeft", "PaddingRight" } do
-	(padding :: any)[side] = UDim.new(0, 10)
+-- outlines can't be sized in Scale: 2px on the reference screen, scaled
+-- like the panel
+local function sizeStroke()
+	local screen = gui.AbsoluteSize
+	stroke.Thickness = 2 * math.min(screen.X / SCREEN.X, screen.Y / SCREEN.Y)
 end
+gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(sizeStroke)
+sizeStroke()
+
+local padding = Instance.new("UIPadding")
+padding.PaddingLeft = UDim.new(10 / PANEL.X, 0)
+padding.PaddingRight = UDim.new(10 / PANEL.X, 0)
+padding.PaddingTop = UDim.new(10 / PANEL.Y, 0)
+padding.PaddingBottom = UDim.new(10 / PANEL.Y, 0)
 padding.Parent = panel
 
 local layout = Instance.new("UIListLayout")
 layout.SortOrder = Enum.SortOrder.LayoutOrder
-layout.Padding = UDim.new(0, 6)
+layout.Padding = UDim.new(6 / CONTENT.Y, 0)
 layout.Parent = panel
+
+-- TextScaled makes text as tall as the label's inner area, so pad that area
+-- down to the text's reference size: it then matches the reference screen
+-- and grows or shrinks with the panel.
+local function textHeight(l: TextLabel, size: number, boxHeight: number)
+	local pad = l:FindFirstChildOfClass("UIPadding") or Instance.new("UIPadding")
+	local edge = UDim.new((boxHeight - size) / 2 / boxHeight, 0)
+	pad.PaddingTop = edge
+	pad.PaddingBottom = edge
+	pad.Parent = l
+end
 
 local function label(parent, text, font, size, color, order)
 	local l = Instance.new("TextLabel")
 	l.BackgroundTransparency = 1
 	l.Text = text
 	l.Font = font
-	l.TextSize = size
+	l.TextScaled = true
 	l.TextColor3 = color
 	l.TextXAlignment = Enum.TextXAlignment.Left
-	l.Size = UDim2.new(1, 0, 0, size + 2)
+	l.Size = UDim2.fromScale(1, (size + 2) / CONTENT.Y)
 	l.LayoutOrder = order or 0
+	textHeight(l, size, size + 2)
 	l.Parent = parent
 	return l
 end
@@ -96,17 +129,18 @@ local percents = {}
 for index, bar in BARS do
 	local row = Instance.new("Frame")
 	row.BackgroundTransparency = 1
-	row.Size = UDim2.new(1, 0, 0, 16)
+	row.Size = UDim2.fromScale(1, 16 / CONTENT.Y)
 	row.LayoutOrder = 2 + index
 	row.Parent = panel
 
 	local name = label(row, bar.label, Enum.Font.GothamMedium, 12, rgb(220, 222, 228))
-	name.Size = UDim2.new(0, 44, 1, 0)
+	name.Size = UDim2.fromScale(44 / CONTENT.X, 1)
+	textHeight(name, 12, 16)
 
 	local track = Instance.new("Frame")
 	track.AnchorPoint = Vector2.new(0, 0.5)
-	track.Position = UDim2.new(0, 48, 0.5, 0)
-	track.Size = UDim2.new(1, -86, 0, 8)
+	track.Position = UDim2.fromScale(48 / CONTENT.X, 0.5)
+	track.Size = UDim2.fromScale((CONTENT.X - 86) / CONTENT.X, 0.5)
 	track.BackgroundColor3 = rgb(255, 255, 255)
 	track.BackgroundTransparency = 0.85
 	track.Parent = row
@@ -123,7 +157,8 @@ for index, bar in BARS do
 	pct.TextXAlignment = Enum.TextXAlignment.Right
 	pct.AnchorPoint = Vector2.new(1, 0)
 	pct.Position = UDim2.fromScale(1, 0)
-	pct.Size = UDim2.new(0, 34, 1, 0)
+	pct.Size = UDim2.fromScale(34 / CONTENT.X, 1)
+	textHeight(pct, 12, 16)
 	percents[bar.key] = pct
 end
 
