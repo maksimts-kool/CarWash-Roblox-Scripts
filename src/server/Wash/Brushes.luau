@@ -17,6 +17,10 @@ local WRAP_CLOSED_ANGLE = 15 -- swung in, across the car's front and back
 
 local Brushes = {}
 
+-- What's running, for the ControlPanel.
+Brushes.wrapsOn = false
+Brushes.rockersOn = false
+
 -- The conveyor picks the car up when its nose reaches the wrap-around sensor.
 Brushes.PickupSensor = Wraps.Sensor :: BasePart
 Brushes.PICKUP_Z = Wraps.Sensor.Position.Z
@@ -38,6 +42,7 @@ local function setWrapAngle(angle: number)
 end
 
 function Brushes.setWraps(on: boolean)
+	Brushes.wrapsOn = on
 	for _, brush in { Wraps.BrushOne, Wraps.BrushTwo } do
 		setEmittersUnder(brush, on)
 	end
@@ -66,6 +71,7 @@ function Brushes.openWraps()
 end
 
 function Brushes.setRockers(on: boolean)
+	Brushes.rockersOn = on
 	for index, brush in { Rockers.BrushOne.RockerBrush, Rockers.BrushTwo.RockerBrush } do
 		setEmittersUnder(brush, on)
 		Joints.spin(Joints.get(brush.BrushMotor.MotorMain), if on then ROCKER_SPIN else 0)

@@ -10,7 +10,9 @@
 -- then at Config.ConveyorSpeed into the dryers and out.
 --
 -- Publishes WashPhase / WashPhaseSince on CarWash for the client light show:
--- "Idle", "Ready", "Washing", "Drying", "Exit", "Finished".
+-- "Idle", "Ready", "Washing", "Drying", "Exit", "Finished", and "Stopped"
+-- while the emergency stop (Wash/Stop, pressed on the ControlPanel) is active.
+-- Every long wait in the timeline errors out on an emergency stop.
 --
 -- Each machine also tells CarCondition while it is working, and on which
 -- stretch of lane, so each section of the car gets scrubbed, foamed, rinsed,
@@ -26,6 +28,7 @@ local Car = require(script.Car)
 local Conveyor = require(script.Conveyor)
 local Dryers = require(script.Dryers)
 local Screens = require(script.Screens)
+local Stop = require(script.Stop)
 local TopBrush = require(script.TopBrush)
 
 local CarWash = workspace:WaitForChild("CarWash")
@@ -290,7 +293,7 @@ local function runDryers()
 		EndsAt = now() + Config.DrySeconds,
 		Total = Config.DrySeconds,
 	})
-	task.wait(Config.DrySeconds)
+	Stop.wait(Config.DrySeconds)
 	Screens.set(Screens.Dry, "Done")
 	Dryers.stop()
 	CarCondition.clearEffects()
@@ -298,7 +301,7 @@ end
 
 local function releaseCar()
 	Gates.setExit(true)
-	task.wait(Config.ExitGateOpenSeconds)
+	Stop.wait(Config.ExitGateOpenSeconds)
 	Conveyor.moveCarTo(Gates.ExitSensor.Position.Z - Car.length() - EXIT_CLEARANCE)
 	Gates.setExit(false)
 	Car.releaseTow()
@@ -325,10 +328,13 @@ function Wash.run(programKey: string, entryHit: BasePart?)
 	Car.publish(true)
 	local washedModel = Car.model()
 
+	Stop.check()
 	setPhase("Washing")
 	runTunnel(program)
+	Stop.check()
 	setPhase("Drying")
 	runDryers()
+	Stop.check()
 	setPhase("Exit")
 	releaseCar()
 	setPhase("Finished")
@@ -342,6 +348,9 @@ function Wash.run(programKey: string, entryHit: BasePart?)
 	Car.unpublish()
 	Screens.idle()
 end
+
+-- Sets WashPhase directly (the ControlPanel's emergency stop and reset).
+Wash.setPhase = setPhase
 
 -- A paid customer's gate is open: the tunnel lights power up for them.
 function Wash.ready()

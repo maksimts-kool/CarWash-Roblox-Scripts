@@ -10,6 +10,10 @@ local ExitJoint = Joints.get(CarWash.GateEX.Frame.MotorSupport)
 
 local Gates = {}
 
+-- Where each arm was last sent (true = open), for the ControlPanel.
+Gates.entryOpen = false
+Gates.exitOpen = false
+
 -- Touched when a car has driven through the entry gate.
 Gates.EntrySensor = CarWash.GateEN.CloseSensor :: BasePart
 -- The car is clear of the wash once its tail passes this.
@@ -20,10 +24,12 @@ local function angle(open: boolean): number
 end
 
 function Gates.setEntry(open: boolean)
+	Gates.entryOpen = open
 	Joints.servo(EntryJoint, angle(open))
 end
 
 function Gates.setExit(open: boolean)
+	Gates.exitOpen = open
 	Joints.servo(ExitJoint, angle(open))
 end
 

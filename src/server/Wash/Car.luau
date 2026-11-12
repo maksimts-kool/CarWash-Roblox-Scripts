@@ -8,6 +8,7 @@
 -- Publishes CarFront / CarLength on CarWash for the client light show.
 
 local Config = require(script.Parent.Parent.Config)
+local Stop = require(script.Parent.Stop)
 
 local CarWash = workspace:WaitForChild("CarWash")
 
@@ -114,6 +115,7 @@ function Car.unpublish()
 end
 
 -- Waits until a car touching `sensor` has its nose at `pickupZ`, or times out.
+-- Errors out on an emergency stop (see Stop).
 function Car.waitForPickup(sensor: BasePart, pickupZ: number, timeout: number)
 	local connection = sensor.Touched:Connect(function(hit)
 		if not Car.has() then
@@ -121,13 +123,14 @@ function Car.waitForPickup(sensor: BasePart, pickupZ: number, timeout: number)
 		end
 	end)
 	local deadline = os.clock() + timeout
-	while os.clock() < deadline and not (Car.has() and Car.front() <= pickupZ) do
+	while os.clock() < deadline and not Stop.active and not (Car.has() and Car.front() <= pickupZ) do
 		if Car.has() then
 			Car.publish()
 		end
 		task.wait(0.05)
 	end
 	connection:Disconnect()
+	Stop.check()
 end
 
 -- The conveyor takes over the car.

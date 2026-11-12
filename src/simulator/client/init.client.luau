@@ -26,17 +26,19 @@
 -- Data comes from the player attributes ServerScriptService.Simulator sets
 -- (Level, XP, XPNext, Rating, Jobs, Job*, WashBudget, Upg_*) and the JobCar
 -- ObjectValue; actions go through ReplicatedStorage.SimRemotes. Texts that
--- describe things (upgrade names, icons) come from ReplicatedStorage.SimConfig.
+-- describe things (upgrade names and prices, icons) come from the "Shared"
+-- attribute on SimRemotes (the server's Simulator Config, as JSON).
 
+local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TextService = game:GetService("TextService")
 local TweenService = game:GetService("TweenService")
 
-local SimConfig = require(ReplicatedStorage:WaitForChild("SimConfig"))
 local Remotes = ReplicatedStorage:WaitForChild("SimRemotes")
-local Icons = SimConfig.Icons
+local Shared = HttpService:JSONDecode(Remotes:GetAttribute("Shared") or "{}")
+local Icons = Shared.Icons
 
 local player = Players.LocalPlayer
 local gui = player:WaitForChild("PlayerGui"):WaitForChild("SimHud")
@@ -77,7 +79,7 @@ end
 local function money(n: number): string
 	local s = tostring(math.floor(n + 0.5))
 	local formatted = s:reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
-	return SimConfig.Currency .. formatted
+	return Shared.Currency .. formatted
 end
 
 ---------------------------------------------------------------- the GUI
@@ -156,7 +158,7 @@ end
 local function refreshLevel()
 	local level = player:GetAttribute("Level") or 1
 	local xp = player:GetAttribute("XP") or 0
-	local nextXp = player:GetAttribute("XPNext") or SimConfig.xpToNext(level)
+	local nextXp = player:GetAttribute("XPNext") or 1
 	Stats.Level.Level.Text = "Lv " .. level .. "  Washer"
 	Stats.Level.XP.Text = `{math.floor(xp)} / {nextXp} XP`
 	tween(Stats.Level.Bar.Fill, 0.5, { Size = UDim2.fromScale(math.clamp(xp / nextXp, 0, 1), 1) })
@@ -344,7 +346,7 @@ local function update()
 		setObjective("JobBoard", "Head to the Job Board", "Customers drop off dirty cars. Wash them, deliver them, get paid.", TARGETS.board)
 	else
 		local wants = player:GetAttribute("JobWants") or "Small"
-		local wantsName = SimConfig.ProgramNames[wants] or wants
+		local wantsName = Shared.ProgramNames[wants] or wants
 		local vip = player:GetAttribute("JobVip")
 		local budget = player:GetAttribute("WashBudget") or 0
 
@@ -511,7 +513,7 @@ end)
 
 ---------------------------------------------------------------- upgrades shop
 local shopRows = {}
-for i, upgrade in SimConfig.Upgrades do
+for i, upgrade in Shared.Upgrades do
 	-- a row per upgrade: the one built in StarterGui, or a copy of the template
 	local row = Shop.List:FindFirstChild(upgrade.id)
 	if not row then
@@ -564,13 +566,13 @@ local function refreshShop()
 			row.Buy.Text = "MAX"
 			row.Buy.BackgroundColor3 = C.muted
 		else
-			local cost = upgrade.cost(level)
+			local cost = upgrade.costs[level + 1]
 			row.Buy.Text = money(cost)
 			row.Buy.BackgroundColor3 = if cash >= cost then C.green else C.red
 		end
 	end
 end
-for _, upgrade in SimConfig.Upgrades do
+for _, upgrade in Shared.Upgrades do
 	player:GetAttributeChangedSignal("Upg_" .. upgrade.id):Connect(refreshShop)
 end
 

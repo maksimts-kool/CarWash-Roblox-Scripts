@@ -88,6 +88,16 @@ Config.GateClosedAngle = 0
 Config.EntryGateSettleSeconds = 2 -- after opening, before the car may trigger the wash
 Config.ExitGateOpenSeconds = 5
 
+-- The operator's control panel (see ControlPanel).
+Config.ControlPanel = {
+	-- UserIds that may use it, on top of the place's owner (or, for a group
+	-- place, the group's owner rank).
+	Admins = {} :: { number },
+	-- In Studio play tests everyone is an admin (test players have made-up ids).
+	AdminsInStudio = true,
+	LogLength = 40, -- log lines kept
+}
+
 -- Car condition (see CarCondition). Every car carries Dirt / Soap / Wet /
 -- Shine, 0..1 each, per section of the car from nose to tail.
 Config.Condition = {

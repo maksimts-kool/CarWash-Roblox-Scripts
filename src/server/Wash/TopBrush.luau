@@ -175,6 +175,10 @@ function TopBrush.stop()
 	setLift(LIFT_MAX, true)
 end
 
+function TopBrush.isRunning(): boolean
+	return running
+end
+
 -- park it at the top when the server starts
 TopBrush.stop()
 

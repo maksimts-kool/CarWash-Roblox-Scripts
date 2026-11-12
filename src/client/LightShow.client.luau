@@ -11,6 +11,7 @@
 --   Exit      green chevrons run to the exit, ceiling rows switch off behind the car
 --   Finished  the rest of the ceiling shuts off row by row, the hexagons go dark
 --             one by one and then fade back into the idle wave
+--   Stopped   emergency stop: full white work light, hexagons pulse red
 --
 -- The server (Wash) publishes on workspace.CarWash:
 --   WashPhase       one of the phases above
@@ -50,6 +51,7 @@ local HEX_INVITE = rgb(0, 200, 255)
 local HEX_TUNNEL = rgb(120, 190, 255) -- the car is between arches (blasters, brushes)
 local HEX_AIR = rgb(215, 240, 255)
 local HEX_EXIT = rgb(40, 230, 90)
+local HEX_ALARM = rgb(255, 30, 30)
 local WHITE = rgb(255, 255, 255)
 
 -- Distance into the tunnel along the car's path, so "ahead" is always +s.
@@ -203,7 +205,9 @@ local function idleHex(hex, now)
 end
 
 local function ceilingTarget(row, phase, age, car, stageColor)
-	if phase == "Ready" then
+	if phase == "Stopped" then
+		return 1, CEILING_WHITE, true
+	elseif phase == "Ready" then
 		local start = (row.index - 1) * READY_ROW_DELAY
 		if age < start then
 			return STANDBY_CEILING, CEILING_WHITE, true
@@ -236,7 +240,9 @@ local function ceilingTarget(row, phase, age, car, stageColor)
 end
 
 local function hexTarget(hex, phase, age, now, car, stageColor)
-	if phase == "Ready" then
+	if phase == "Stopped" then
+		return 0.25 + 0.75 * (0.5 + 0.5 * math.cos(TAU * age)), HEX_ALARM
+	elseif phase == "Ready" then
 		-- pulses running in from the entrance
 		local behindHead = (age * 25 - hex.s - hex.high * 1.5) % 30
 		local pulse = math.exp(-behindHead / 5)

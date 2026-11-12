@@ -17,10 +17,9 @@
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
 
-local SimConfig = require(ReplicatedStorage:WaitForChild("SimConfig"))
+local Config = require(script.Parent.Config)
 local PlayerData = require(script.Parent.PlayerData)
 local WashConfig = require(game:GetService("ServerScriptService"):WaitForChild("CarWash"):WaitForChild("Config"))
 
@@ -66,7 +65,7 @@ local function pick(list)
 end
 
 local function money(n: number): string
-	return SimConfig.Currency .. tostring(math.floor(n + 0.5))
+	return Config.Currency .. tostring(math.floor(n + 0.5))
 end
 
 ---------------------------------------------------------------- HUD mirror
@@ -148,8 +147,8 @@ end
 local function tag(seat: VehicleSeat, job: Job)
 	local gui = TagTemplate:Clone()
 	local frame = gui.Frame
-	frame.Badge.Image = SimConfig.Icons[if job.vip then "Crown" else "Customer"]
-	frame.Title.Text = (if job.vip then "VIP " else "") .. job.customer .. " • " .. SimConfig.ProgramNames[job.wants]
+	frame.Badge.Image = Config.Icons[if job.vip then "Crown" else "Customer"]
+	frame.Title.Text = (if job.vip then "VIP " else "") .. job.customer .. " • " .. Config.ProgramNames[job.wants]
 	frame.Subtitle.Text = "Job for " .. job.player.DisplayName
 	if job.vip then
 		frame.BackgroundColor3 = Color3.fromRGB(60, 45, 10)
@@ -182,7 +181,7 @@ end
 local function chooseCustomer(player: Player)
 	local level = player:GetAttribute("Level") or 1
 	local pool, total = {}, 0
-	for index, def in SimConfig.Customers do
+	for index, def in Config.Customers do
 		if def.unlock <= level then
 			-- newer unlocks turn up more often
 			total += index
@@ -223,16 +222,16 @@ local function startJob(player: Player)
 	end
 
 	local billboards = PlayerData.upgradeLevel(player, "Billboard")
-	local vip = rng:NextNumber() < SimConfig.VipChanceBase + 0.08 * billboards
+	local vip = rng:NextNumber() < Config.VipChanceBase + 0.08 * billboards
 	local wants = if vip then "Full" else pick(def.wants)
-	local pay = def.pay * (if vip then SimConfig.VipPayMultiplier else 1)
+	local pay = def.pay * (if vip then Config.VipPayMultiplier else 1)
 
 	local model = template:Clone() :: Model
 	model.Name = def.car .. "_" .. player.UserId
 	local offset = template:GetAttribute("SpawnOffset") or CFrame.identity
 	model:PivotTo(CFrame.new(bay.Position.X, bay.Position.Y + 0.4, bay.Position.Z) * offset)
 	model:SetAttribute("SpawnOffset", nil)
-	model:SetAttribute("Dirt", rng:NextNumber(SimConfig.StartDirt[1], SimConfig.StartDirt[2]))
+	model:SetAttribute("Dirt", rng:NextNumber(Config.StartDirt[1], Config.StartDirt[2]))
 	model:SetAttribute("JobOwner", player.UserId)
 
 	local seat = seatOf(model) :: VehicleSeat
@@ -241,13 +240,13 @@ local function startJob(player: Player)
 		model = model,
 		seat = seat,
 		bay = bay,
-		customer = pick(SimConfig.CustomerNames),
+		customer = pick(Config.CustomerNames),
 		carName = def.carName,
 		wants = wants,
 		vip = vip,
 		pay = pay,
 		xp = def.xp * (if vip then 1.5 else 1),
-		endsAt = workspace:GetServerTimeNow() + SimConfig.JobTimeoutSeconds,
+		endsAt = workspace:GetServerTimeNow() + Config.JobTimeoutSeconds,
 		done = false,
 		lastNag = 0,
 		connections = {},
@@ -291,7 +290,7 @@ local function startJob(player: Player)
 	end))
 
 	-- the job panel shows who, what and how much; the toast is only their voice
-	notify:FireClient(player, `"{pick(SimConfig.CustomerLines)}"`, "job")
+	notify:FireClient(player, `"{pick(Config.CustomerLines)}"`, "job")
 end
 
 -- How the customer rates the car they get back.
@@ -305,10 +304,10 @@ local function evaluate(job: Job)
 	local washed = model:GetAttribute("LastWashProgram")
 
 	local score = (1 - dirt) * 70 + shine * 20 + (if soap < 0.1 and wet < 0.25 then 10 else 0)
-	score += SimConfig.DetailKitScore * PlayerData.upgradeLevel(job.player, "DetailKit")
+	score += Config.DetailKitScore * PlayerData.upgradeLevel(job.player, "DetailKit")
 	score = math.clamp(math.floor(score + 0.5), 0, 100)
 	local stars = 1
-	for i, threshold in SimConfig.StarThresholds do
+	for i, threshold in Config.StarThresholds do
 		if score >= threshold then
 			stars = 6 - i
 			break
@@ -316,11 +315,11 @@ local function evaluate(job: Job)
 	end
 
 	local notes = {}
-	local wantedRank = SimConfig.ProgramRank[job.wants] or 1
-	local gotRank = SimConfig.ProgramRank[washed] or 0
+	local wantedRank = Config.ProgramRank[job.wants] or 1
+	local gotRank = Config.ProgramRank[washed] or 0
 	if gotRank < wantedRank then
-		stars = math.max(1, stars - SimConfig.WrongProgramStars)
-		table.insert(notes, `I asked for the {SimConfig.ProgramNames[job.wants]}...`)
+		stars = math.max(1, stars - Config.WrongProgramStars)
+		table.insert(notes, `I asked for the {Config.ProgramNames[job.wants]}...`)
 	elseif gotRank > wantedRank then
 		table.insert(notes, "Ooh, you upgraded my wash!")
 	end
@@ -333,10 +332,10 @@ local function evaluate(job: Job)
 	local soapLevel = PlayerData.upgradeLevel(player, "PremiumSoap")
 	local tipLevel = PlayerData.upgradeLevel(player, "TipJar")
 
-	local base = job.pay * (1 + 0.10 * soapLevel) * (1 + SimConfig.LevelPayBonus * (level - 1))
-	local tipRate = if stars >= 3 then SimConfig.TipPerStar * (stars - 2) else 0
+	local base = job.pay * (1 + 0.10 * soapLevel) * (1 + Config.LevelPayBonus * (level - 1))
+	local tipRate = if stars >= 3 then Config.TipPerStar * (stars - 2) else 0
 	if condition == "Showroom Shine" then
-		tipRate += SimConfig.ShowroomBonus
+		tipRate += Config.ShowroomBonus
 	end
 	if job.vip and stars < 4 then
 		tipRate = 0
@@ -383,7 +382,7 @@ local function deliver(job: Job)
 	result.levelUp = PlayerData.addXP(player, result.xp)
 	if result.levelUp then
 		local unlocked = {}
-		for _, def in SimConfig.Customers do
+		for _, def in Config.Customers do
 			if def.unlock == result.levelUp then
 				table.insert(unlocked, def.carName)
 			end
@@ -438,7 +437,7 @@ local function watch()
 				end
 				continue
 			end
-			if seat.AssemblyLinearVelocity.Magnitude <= SimConfig.DeliverMaxSpeed then
+			if seat.AssemblyLinearVelocity.Magnitude <= Config.DeliverMaxSpeed then
 				deliver(job)
 			end
 		end

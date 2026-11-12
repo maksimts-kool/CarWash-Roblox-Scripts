@@ -4,6 +4,7 @@ local RunService = game:GetService("RunService")
 
 local Config = require(script.Parent.Parent.Config)
 local Car = require(script.Parent.Car)
+local Stop = require(script.Parent.Stop)
 
 local ConveyorPart = workspace:WaitForChild("CarWash"):WaitForChild("ConveyorPart")
 
@@ -26,7 +27,11 @@ export type Trigger = {
 
 local Conveyor = {}
 
+-- The belts' current speed, studs per second (read by the ControlPanel).
+Conveyor.speed = 0
+
 local function setBelts(speed: number)
+	Conveyor.speed = speed
 	for _, belt in belts do
 		belt.AssemblyLinearVelocity = belt.CFrame.LookVector * speed
 	end
@@ -54,7 +59,8 @@ end
 -- Each trigger runs once, the moment its condition holds; any still pending
 -- run at the end, in list order. cruiseSpeed() gives the speed for where the
 -- car is now (default Config.ConveyorSpeed). Gives up if the car makes no
--- progress for Config.StallSeconds.
+-- progress for Config.StallSeconds. Errors out at once on an emergency stop
+-- (see Stop), without running the pending triggers.
 function Conveyor.moveCarTo(targetZ: number, triggers: { Trigger }?, cruiseSpeed: (() -> number)?)
 	local cruise = cruiseSpeed or function()
 		return Config.ConveyorSpeed
@@ -76,6 +82,7 @@ function Conveyor.moveCarTo(targetZ: number, triggers: { Trigger }?, cruiseSpeed
 
 	while Car.front() > targetZ and os.clock() - lastProgress < Config.StallSeconds do
 		local deltaTime = RunService.Heartbeat:Wait()
+		Stop.check()
 		-- slow to a stop on the target, otherwise cruise at this zone's speed
 		local goal = math.clamp((Car.front() - targetZ) * BRAKING, MIN_SPEED, cruise())
 		local step = Config.ConveyorAccel * deltaTime

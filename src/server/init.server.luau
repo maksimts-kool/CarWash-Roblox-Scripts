@@ -11,3 +11,4 @@ require(script.CarCondition).start()
 
 require(script.Cash).start()
 require(script.WashLine).start()
+require(script.ControlPanel).start()

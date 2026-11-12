@@ -11,7 +11,9 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local SimConfig = require(ReplicatedStorage:WaitForChild("SimConfig"))
+local HttpService = game:GetService("HttpService")
+
+local Config = require(script.Config)
 
 -- Remotes the HUD uses.
 local remotes = Instance.new("Folder")
@@ -26,6 +28,8 @@ local Notify = remote("RemoteEvent", "Notify") -- server -> client: toast text
 local Reward = remote("RemoteEvent", "Reward") -- server -> client: job result card
 local CancelJob = remote("RemoteEvent", "CancelJob") -- client -> server
 local BuyUpgrade = remote("RemoteFunction", "BuyUpgrade") -- client -> server: (id) -> ok, message
+-- what the HUD shows (it can't read Config, which is server only)
+remotes:SetAttribute("Shared", HttpService:JSONEncode(Config.shared()))
 remotes.Parent = ReplicatedStorage
 
 local PlayerData = require(script.PlayerData)
@@ -41,7 +45,7 @@ BuyUpgrade.OnServerInvoke = function(player: Player, id: unknown)
 	if type(id) ~= "string" or buying[player] then
 		return false, "Try again"
 	end
-	local upgrade = SimConfig.upgrade(id)
+	local upgrade = Config.upgrade(id)
 	if not upgrade or not PlayerData.get(player) then
 		return false, "Unknown upgrade"
 	end

@@ -132,6 +132,10 @@ function Module.set(on: boolean)
 	update()
 end
 
+function Module.isOn(): boolean
+	return powered
+end
+
 -- Forgets the last car's wheels. Call when a new car is taken on.
 function Module.reset()
 	table.clear(spans)

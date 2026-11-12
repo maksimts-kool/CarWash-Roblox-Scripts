@@ -7,10 +7,9 @@
 
 local DataStoreService = game:GetService("DataStoreService")
 local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
-local SimConfig = require(ReplicatedStorage:WaitForChild("SimConfig"))
+local Config = require(script.Parent.Config)
 
 local PlayerData = {}
 
@@ -28,7 +27,7 @@ local notify: RemoteEvent
 local store: DataStore? = nil
 do
 	local ok, result = pcall(function()
-		return DataStoreService:GetDataStore(SimConfig.DataStoreName)
+		return DataStoreService:GetDataStore(Config.DataStoreName)
 	end)
 	if ok then
 		store = result
@@ -49,10 +48,10 @@ end
 local function mirror(player: Player, p: Profile)
 	player:SetAttribute("Level", p.Level)
 	player:SetAttribute("XP", p.XP)
-	player:SetAttribute("XPNext", SimConfig.xpToNext(p.Level))
+	player:SetAttribute("XPNext", Config.xpToNext(p.Level))
 	player:SetAttribute("Jobs", p.Stats.Jobs)
 	player:SetAttribute("Rating", if p.Stats.Jobs > 0 then p.Stats.StarSum / p.Stats.Jobs else 0)
-	for _, upgrade in SimConfig.Upgrades do
+	for _, upgrade in Config.Upgrades do
 		player:SetAttribute("Upg_" .. upgrade.id, p.Upgrades[upgrade.id] or 0)
 	end
 	local leaderstats = player:FindFirstChild("leaderstats")
@@ -183,8 +182,8 @@ function PlayerData.addXP(player: Player, amount: number): number?
 	end
 	p.XP += amount
 	local levelled = nil
-	while p.XP >= SimConfig.xpToNext(p.Level) do
-		p.XP -= SimConfig.xpToNext(p.Level)
+	while p.XP >= Config.xpToNext(p.Level) do
+		p.XP -= Config.xpToNext(p.Level)
 		p.Level += 1
 		levelled = p.Level
 	end
@@ -248,7 +247,7 @@ function PlayerData.start(notifyRemote: RemoteEvent)
 	end)
 	task.spawn(function()
 		while true do
-			task.wait(SimConfig.AutosaveSeconds)
+			task.wait(Config.AutosaveSeconds)
 			for _, player in Players:GetPlayers() do
 				task.spawn(save, player)
 			end

@@ -315,6 +315,17 @@ function Dryers.stop()
 	end
 end
 
+-- How many dryers are running (or queued to start), and how many there are.
+function Dryers.count(): (number, number)
+	local on = 0
+	for _, unit in units do
+		if unit.running or unit.queued then
+			on += 1
+		end
+	end
+	return on, #units
+end
+
 -- Back to idle: winds down whatever is running, otherwise just makes sure it's all off.
 function Dryers.reset()
 	clearQueue()

@@ -26,6 +26,14 @@ The services in the project (`ServerScriptService`, `StarterPlayer`) get the sam
 treatment, so any `StarterPlayer` setting you change in Studio must also go into its
 `$properties` in `default.project.json`, or the next Server-priority connect resets it.
 
+**Build things in the place, not in scripts.** Anything that can be made in Studio
+(parts, models, GUIs, sounds, lights) is made there and saved in the place, and the
+scripts only find it by name, fill it in and animate it, like the pay terminal
+(`Selections`) and the `ControlBooth`. Scripts don't build parts or lay out GUIs at
+runtime. A list that can grow (one row per machine, per program, per log line) gets a
+saved row for each entry plus a hidden template in the GUI that the script copies for
+anything new.
+
 ## Code
 
 Server (`src/server`), started by `init.server.luau` in this order:
@@ -47,6 +55,8 @@ Server (`src/server`), started by `init.server.luau` in this order:
 | `Wash/Blasters` | Rotary wheel blasters (`RotaryWheelBlasters`): three spinning heads per side; the `Sensor` beam remembers where the car's wheels are, and the nozzles fire while a wheel is in front of the heads |
 | `Wash/Dryers` | The KWS Storm Dryers. Each starts only when the car's nose is right under its first `AirOutlet` (`Config.DryerLead`), one at a time (`Config.DryerStagger` apart): Startup sound (cut after `DryerStartupSeconds`), then the hum; on stop the hum fades under the Stop sound. Volume and hearing distance are in `Config` |
 | `Wash/Screens` | Attributes for the Wash Time / Dry Time screens |
+| `Wash/Stop` | The emergency stop flag. Every long wait in the wash timeline (conveyor moves, pickup, drying, exit gate) errors out while it is set, and `WashLine` holds the line until it is reset |
+| `ControlPanel` | The operator console on `CarWash.ControlBooth` (parts saved in the place, beside the entry gate: a `Screen`, an `EStop` mushroom button and a `Green` / `Amber` / `Red` stack light the script lights). It publishes machine, gate, conveyor, settings, stats and log state on `ReplicatedStorage.CarWashPanel` and takes commands through `CarWashRemotes.ControlPanel`. Only operators can use it: the place owner, `Config.ControlPanel.Admins`, and everyone in Studio |
 
 Client (`src/client`), one LocalScript each, all driven by attributes the server sets
 and by server time, so every player sees the same thing with no remotes:
@@ -54,6 +64,15 @@ and by server time, so every player sees the same thing with no remotes:
 by setting each joint's `Transform`, with smooth easing), `LightShow` (ceiling lights and wall hexagons), `ArchLights` (arch LEDs),
 `TimerScreens` (Wash Time / Dry Time screens), `ProgressScreen` (entrance screen
 animations), `KioskScreen` (pay terminal screen animations).
+`ControlPanel` fills in the operator console, the SurfaceGui `ControlBooth.Screen.Panel` saved
+in the place in the pay terminal's style (white cards, navy text, blue accents, Montserrat).
+Each client fills its own copy and sends button presses to the server, which checks
+who pressed them. It shows line status, the e-stop, the car's position in the tunnel, a lamp per machine and four
+tabs: Manual (machine tests while idle, gates, all off, cancel admission), Washes (free
+operator washes), Settings (live speeds, times, prices; reset on server restart) and
+Stats & Log. Non-operators see the `Lock` screen.
+The booth and its GUI are ordinary instances: move or restyle them in Studio, keeping the
+names the script looks for (listed at the top of `client/ControlPanel.client.luau`).
 
 ## Sync
 
@@ -148,6 +167,7 @@ and reconnect.
   an `AirOutlet` part aimed along the spout with faint air wisps and haze (`DryerAir`),
   switched with the fans. Particles on the moving brushes and blaster heads only
   animate properly in play mode, not in Studio's edit view.
+- `ControlBooth` is the operator console (see `ControlPanel`); its `Screen` part carries the panel.
 - `Lights` holds the 16 ceiling lights. `Building` holds the walls, roof and grading.
 - `Selections` is the pay terminal. Its `Screen.SurfaceGui` (fixed 800 x 610 canvas) has a
   `Header` with a Choose / Confirm / Pay stepper, a `Footer` hint line and three `Pages`:
